@@ -1,8 +1,8 @@
 modo_falha_sk,codigo_modo,nome_modo,origem,descricao_engenharia
-1,TWF,Desgaste de ferramenta,AI4I,
-2,HDF,Dissipacao de calor,AI4I,
-3,PWF,Falha de potencia,AI4I,
-4,OSF,Sobrecarga,AI4I,
-5,RNF,Falha aleatoria,AI4I,
+1,TWF,Desgaste de ferramenta,AI4I,"Ferramenta chega ao fim da vida e e' trocada, ou quebra antes de alguem trocar. O desgaste acumulado passa dos 200 minutos de uso e o acabamento da peca comeca a sair fora de tolerancia antes de a quebra aparecer. Para de 4 a 16 horas, porque a maior parte do tempo e' esperar a ferramenta chegar."
+2,HDF,Dissipacao de calor,AI4I,"Trocador sujo ou ventilacao obstruida: o processo nao consegue jogar calor fora e a temperatura dele sobe junto com a do ar, com pouca diferenca entre as duas. Resolve em 2 a 6 horas com limpeza, sem troca de peca."
+3,PWF,Falha de potencia,AI4I,"Potencia no eixo fora da faixa de trabalho. Ou o acionamento nao entrega torque suficiente na rotacao pedida, ou entrega demais e a protecao atua antes de estragar alguma coisa. Na pratica e' reset de acionamento e conferencia de parametro, 2 a 6 horas, quase sempre sem troca de peca."
+4,OSF,Sobrecarga,AI4I,"Ferramenta ja' gasta somada a torque alto: o esforco acumulado passa do que o tipo da peca aguenta e a maquina para antes de quebrar o eixo. Peca H suporta mais que L, entao o mesmo torque derruba uma e nao derruba a outra, e esse e' o unico caso em que a qualidade da peca muda o limite fisico. De 4 a 16 horas, com troca de componente."
+5,RNF,Falha aleatoria,AI4I,"Parada sem causa fisica identificavel. E' ruido que o proprio dataset injetou de proposito, e em 18 dos 19 casos a maquina segue operando: o AI4I nem conta como falha de maquina. Na oficina e' a ocorrencia que se abre, se confere e se fecha em 1 a 3 horas sem achar nada."
 6,INDETERMINADO,Falha sem causa identificada,warehouse,"A fonte declara Machine failure e nao marca modo nenhum: sao 9 leituras. A OS existe porque alguem foi ate' a maquina, e o diagnostico nao chegou ao registro. Nao e' ausencia de dado, e' o estado real de uma ordem sem causa apurada."
 7,NAO_APLICA,Nao se aplica,warehouse,"Preventiva nao tem modo de falha, porque nao houve falha. Esta linha existe para as 651 preventivas apontarem para uma chave de verdade em vez de carregarem FK nula, que quebraria o join e sumiria da contagem sem avisar."

@@ -44,8 +44,10 @@ seeds:
                 values: ['AI4I', 'warehouse']
       - name: descricao_engenharia
         description: >
-          O que o modo e' na pratica. As duas linhas do warehouse ja' estao escritas,
-          porque sao convencao deste projeto. As cinco do AI4I estao vazias de
-          proposito, esperando a redacao do Gabriel: e' conhecimento de campo, e nao
-          ha' fonte de onde copiar. O not_null desta coluna entra quando as cinco
-          estiverem escritas.
+          O que o modo e' na pratica, na maquina, e nao na formula. A regra fisica de
+          cada um esta' em docs/fonte-ai4i.md; aqui fica a traducao para oficina: o
+          que o mantenedor ve' acontecer, o que ele faz, e quanto tempo aquilo para o
+          equipamento. E' o unico conteudo do warehouse que nao saiu nem de dado nem
+          de codigo.
+        data_tests:
+          - not_null
