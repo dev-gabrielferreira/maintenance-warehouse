@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: dim_turno
+    description: >
+      Turnos de trabalho. Grain: um turno. Tres linhas. Dimensao conformada: descreve
+      o turno de fct_leituras e o turno de dim_tecnico.
+    columns:
+      - name: turno_sk
+        description: Chave, 1 manha, 2 tarde, 3 noite. Sem membro desconhecido, por decisao.
+        data_tests:
+          - unique
+          - not_null
+      - name: nome_turno
+        description: Nome do turno, nos mesmos tres valores que a staging garante.
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['manha', 'tarde', 'noite']
+      - name: hora_inicio
+        description: Hora cheia de inicio, 6, 14 ou 22.
+        data_tests:
+          - not_null
+      - name: hora_fim
+        description: Hora cheia de fim.
+        data_tests:
+          - not_null
+      - name: vira_o_dia
+        description: Verdadeiro so' no turno da noite, que comeca num dia e termina no outro.
+        data_tests:
+          - not_null

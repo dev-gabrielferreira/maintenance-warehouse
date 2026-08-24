@@ -236,6 +236,20 @@ no projeto. O `package-lock.yml` que o `dbt deps` gera é versionado, pela mesma
 | Início de vigência da primeira versão de cada ativo | `-infinity`, não a data de instalação | Achado que muda o modelo: 365 leituras acontecem antes da data de instalação do próprio ativo, em 5 máquinas, e isso é sujeira injetada de propósito. Se a versão 1 começasse na instalação, essas 365 leituras não achariam versão nenhuma e cairiam no ativo desconhecido, e o fato perderia dado por causa de um erro de cadastro. Quem acusa a instalação futura é teste singular, não descarte silencioso. |
 | Tamanho de `dim_modo_falha` | Sete linhas, não seis | O `modelo-dimensional.md` tinha escrito seis, contando os cinco modos do AI4I mais o INDETERMINADO. Faltava uma: as 651 preventivas não têm modo, e precisam do membro NAO_APLICA, senão volta a FK nula que a linha acima proíbe. A surrogate de cada modo vai escrita no próprio CSV do seed, para a chave não depender de ordem de carga. |
 
+### As tres dimensoes que nao dependem de ninguem
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Nome de mês e de dia em `dim_tempo` | Escritos em `case`, não em `to_char` | `to_char(data, 'TMMonth')` devolve o nome no idioma do `lc_time` do servidor. A gold passaria a depender de configuração de container, e o mesmo modelo daria "janeiro" aqui e "January" na máquina de quem clonasse. É o mesmo problema de locale que fez a Semana 1 recusar a imagem alpine, aparecendo do outro lado. Rejeitado também fixar `lc_time` no compose: resolveria, e escondendo a dependência em vez de eliminá-la. |
+| Intervalo de `dim_tempo` | 2024-01-01 a 2026-12-31, 1.096 dias | As leituras vão até 2025-12-31 e a última conclusão de OS é 2026-02-12. A folga é de propósito: estender uma dimensão de data depois obriga a recarregar todo fato que aponta para ela, e o custo de guardar dia que ninguém usa é uma linha. |
+| Membro desconhecido em `dim_turno` | Não existe | `stg_leitura_contexto` já tem `not_null` e `accepted_values` em `turno`, então os três valores estão garantidos por teste antes de chegar na gold. Membro `-1` numa dimensão que não pode receber desconhecido seria linha morta, e linha morta em dimensão vira `where` defensivo em toda consulta. |
+| Chave de `dim_modo_falha` | Escrita no próprio CSV do seed | Rejeitado gerar com `row_number()` sobre o seed: funcionaria hoje, e no dia em que alguém inserisse uma linha no meio do arquivo, todas as chaves abaixo dela mudariam e os fatos passariam a apontar para o modo errado, sem erro nenhum aparecer. Chave que depende de ordem de arquivo não é chave. |
+| Coluna `origem` em `dim_modo_falha` | Existe, com valores `AI4I` e `warehouse` | Separa os cinco modos que a fonte publica das duas linhas que este projeto inventou (INDETERMINADO e NAO_APLICA). O README precisa declarar o que é dado e o que é suposição, e aqui a declaração fica dentro da própria dimensão, onde quem consulta vê sem ler documento nenhum. |
+
+O aviso `Configuration paths exist in your dbt_project.yml file which do not apply to
+any resources: models.warehouse.marts`, que a Semana 2 registrou como pendente, sumiu
+com o nascimento da `dim_tempo`, exatamente como estava previsto.
+
 ## Pendentes
 
 As cinco decisões que este bloco listava foram todas fechadas na seção da Semana 3

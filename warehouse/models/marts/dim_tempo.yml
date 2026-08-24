@@ -1,0 +1,76 @@
+version: 2
+
+models:
+  - name: dim_tempo
+    description: >
+      Dimensao de data. Grain: um dia, de 2024-01-01 a 2026-12-31, mais a linha -1
+      para o que nao tem data. 1.097 linhas. Papel duplo em fct_ordens_servico, como
+      abertura e como conclusao.
+    columns:
+      - name: tempo_sk
+        description: >
+          Chave, no formato YYYYMMDD como inteiro. Excecao deliberada ao row_number
+          das outras dimensoes: chave de data legivel filtra periodo sem join. A
+          linha -1 e' o membro desconhecido.
+        data_tests:
+          - unique
+          - not_null
+      - name: data
+        description: >
+          A data em si. Nula na linha -1, e por isso sem not_null: o membro
+          desconhecido existe justamente porque data ali nao existe.
+        data_tests:
+          - unique
+      - name: ano
+        description: Ano com quatro digitos. Nulo na linha -1.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 2024
+                max_value: 2026
+      - name: mes
+        description: Mes de 1 a 12.
+      - name: trimestre
+        description: >
+          Trimestre de 1 a 4. E' o corte da pergunta de negocio sobre preventiva em
+          dia reduzir corretiva no trimestre seguinte.
+      - name: dia_do_mes
+        description: Dia de 1 a 31.
+      - name: ano_mes
+        description: Texto YYYY-MM, para agrupar serie mensal sem montar string na consulta.
+      - name: nome_mes
+        description: Nome do mes em portugues, escrito em case e nao em to_char localizado.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho',
+                         'julho', 'agosto', 'setembro', 'outubro', 'novembro',
+                         'dezembro', 'nao se aplica']
+      - name: dia_semana
+        description: Numero do dia da semana, 0 para domingo, como o extract(dow) devolve.
+      - name: nome_dia
+        description: Nome do dia em portugues.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta',
+                         'sabado', 'nao se aplica']
+      - name: dia_util
+        description: >
+          Falso so' no domingo. E' a mesma regra que o gerador usou para distribuir as
+          leituras: se as duas divergissem, um dia sem leitura nenhuma apareceria como
+          dia util e o buraco nao teria explicacao. Nulo na linha -1.
+      - name: estacao
+        description: Estacao do hemisferio sul, porque a planta e' em Sorocaba.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['verao', 'outono', 'inverno', 'primavera', 'nao se aplica']
+    data_tests:
+      # Prova que a chave inteligente nao mente. Sem este teste, YYYYMMDD e' um numero
+      # que todo mundo assume estar certo e ninguem confere.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "tempo_sk = to_char(data, 'YYYYMMDD')::int"
+            config:
+              where: "data is not null"

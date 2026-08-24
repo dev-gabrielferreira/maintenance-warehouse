@@ -1,0 +1,8 @@
+modo_falha_sk,codigo_modo,nome_modo,origem,descricao_engenharia
+1,TWF,Desgaste de ferramenta,AI4I,
+2,HDF,Dissipacao de calor,AI4I,
+3,PWF,Falha de potencia,AI4I,
+4,OSF,Sobrecarga,AI4I,
+5,RNF,Falha aleatoria,AI4I,
+6,INDETERMINADO,Falha sem causa identificada,warehouse,"A fonte declara Machine failure e nao marca modo nenhum: sao 9 leituras. A OS existe porque alguem foi ate' a maquina, e o diagnostico nao chegou ao registro. Nao e' ausencia de dado, e' o estado real de uma ordem sem causa apurada."
+7,NAO_APLICA,Nao se aplica,warehouse,"Preventiva nao tem modo de falha, porque nao houve falha. Esta linha existe para as 651 preventivas apontarem para uma chave de verdade em vez de carregarem FK nula, que quebraria o join e sumiria da contagem sem avisar."

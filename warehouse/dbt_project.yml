@@ -33,3 +33,14 @@ models:
     marts:
       +materialized: table
       +schema: marts
+
+seeds:
+  warehouse:
+    # Seed e' dimensao como qualquer outra, entao ela mora junto das outras, no
+    # analytics_marts, e nao solta no schema base.
+    +schema: marts
+    dim_modo_falha:
+      # Sem isto o dbt inferiria o tipo da chave a partir do CSV. Inferencia acerta
+      # hoje e erra no dia em que alguem escrever 07 no lugar de 7.
+      +column_types:
+        modo_falha_sk: integer
