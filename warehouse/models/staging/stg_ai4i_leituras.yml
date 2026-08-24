@@ -1,0 +1,100 @@
+# Testes em severity padrao, que e' error. E' a diferenca proposital em relacao ao
+# _bronze__sources.yml: la' o teste mede o que chegou, aqui ele barra o que sai.
+version: 2
+
+models:
+  - name: stg_ai4i_leituras
+    description: >
+      Leituras do AI4I 2020, uma linha por ciclo de operacao, 1:1 com a fonte
+      (10.000 linhas). Renome e tipagem, sem join e sem calculo.
+    columns:
+      - name: udi
+        description: Identificador sequencial da leitura, 1 a 10.000. Chave natural.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: produto_id
+        description: >
+          Identificador da peca produzida. O unique aqui nao e' zelo, e' prova: sao
+          10.000 valores distintos em 10.000 linhas, e por isso este campo NAO
+          identifica equipamento (docs/fonte-ai4i.md, achado 1). Ele vai para o fato
+          como atributo degenerado, e o parque de maquinas vem do gerador.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: tipo_produto
+        description: >
+          Qualidade da peca. Unica coluna categorica que altera um limite fisico: o
+          OSF dispara em 11.000 min.Nm para L, 12.000 para M e 13.000 para H.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['L', 'M', 'H']
+
+      - name: temperatura_ar_k
+        description: Temperatura do ar em Kelvin. Faixa observada 295,3 a 304,5.
+        data_tests:
+          - not_null
+
+      - name: temperatura_processo_k
+        description: >
+          Temperatura do processo em Kelvin, faixa 305,7 a 313,8. Sempre acima da
+          temperatura do ar, e a diferenca entre as duas entra na regra do HDF.
+        data_tests:
+          - not_null
+
+      - name: rotacao_rpm
+        description: Rotacao em rpm. Faixa 1.168 a 2.886.
+        data_tests:
+          - not_null
+
+      - name: torque_nm
+        description: Torque em Newton metro. Faixa 3,8 a 76,6.
+        data_tests:
+          - not_null
+
+      - name: desgaste_ferramenta_min
+        description: Minutos de uso acumulado da ferramenta. Faixa 0 a 253.
+        data_tests:
+          - not_null
+
+      - name: falha_maquina
+        description: >
+          Falha declarada pela fonte, 339 casos. Discorda de "algum modo marcado" em
+          27 linhas: 9 tem falha sem nenhum modo, 18 tem modo (todas RNF) sem falha.
+          A silver preserva a divergencia; a gold vai ter que escolher uma definicao.
+        data_tests:
+          - not_null
+
+      - name: falha_twf
+        description: >
+          Desgaste de ferramenta, 46 casos. Unico dos cinco que nao vira teste
+          deterministico: a documentacao fala em troca entre 200 e 240 minutos e o
+          arquivo tem casos de 198 a 253.
+        data_tests:
+          - not_null
+
+      - name: falha_hdf
+        description: Dissipacao de calor, 115 casos. Regra reproduz o dado 115 de 115.
+        data_tests:
+          - not_null
+
+      - name: falha_pwf
+        description: Falha de potencia, 95 casos. Regra reproduz o dado 95 de 95.
+        data_tests:
+          - not_null
+
+      - name: falha_osf
+        description: Sobrecarga, 98 casos. Regra reproduz o dado 98 de 98.
+        data_tests:
+          - not_null
+
+      - name: falha_rnf
+        description: >
+          Falha aleatoria, 19 casos. Ruido proposital do dataset, sem causa fisica, e
+          nao reproduzivel por regra.
+        data_tests:
+          - not_null
