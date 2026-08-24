@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: dim_local
+    description: >
+      Onde a maquina esta'. Grain: uma linha de producao. 13 linhas: 12 reais mais o
+      membro desconhecido. Hierarquia planta > setor > linha achatada, por rejeicao
+      deliberada ao snowflake.
+    columns:
+      - name: local_sk
+        description: Chave. -1 e' o desconhecido.
+        data_tests:
+          - unique
+          - not_null
+      - name: codigo_linha
+        description: >
+          Codigo natural da linha, no formato SET-Lnn. E' por ele que o fato chega
+          aqui, a partir do codigo_linha da versao vigente do ativo. O valor
+          'DESCONHECIDO' e' o mesmo que a dim_ativo usa, e e' o que fecha o caminho da
+          OS orfa sem coalesce na consulta.
+        data_tests:
+          - unique
+          - not_null
+      - name: codigo_setor
+        description: Sigla do setor, USI MON ACB FER EXP.
+        data_tests:
+          - not_null
+      - name: nome_setor
+        description: Nome do setor por extenso, para relatorio nao sair com sigla.
+        data_tests:
+          - not_null
+      - name: planta
+        description: Uma so' neste projeto, Planta Sorocaba. A coluna existe porque a hierarquia e' essa.
+        data_tests:
+          - not_null

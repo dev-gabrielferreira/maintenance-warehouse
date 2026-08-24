@@ -116,6 +116,12 @@ seria acrescentar uma precisão que a fonte não tem. `dim_tecnico` não toca
 `fct_leituras` porque leitura de sensor não tem quem a fez. Célula vazia na bus matrix é
 informação, não buraco.
 
+A conformidade de `dim_turno` é entre os dois fatos de leitura, e não entre um fato e a
+`dim_tecnico`. O técnico tem turno, e ele fica lá como texto, com os mesmos três valores
+e o mesmo `accepted_values` dos dois lados. Uma FK de `dim_tecnico` para `dim_turno`
+seria outrigger, que é o snowflake entrando pela porta dos fundos numa modelagem que o
+rejeitou pela porta da frente.
+
 ### As dimensões
 
 | Dimensão | Tipo | Grain | Origem |
@@ -195,9 +201,10 @@ Duas consequências que precisam estar no README:
 
 ### D. `dim_tempo` não comporta turno
 
-**Nasce `dim_turno`, três linhas, com hora de início e fim.** Ela é conformada: descreve
-o turno de `fct_leituras` e o turno de `dim_tecnico`. `dim_tempo` fica com um dia por
-linha, dia útil, mês, trimestre e estação.
+**Nasce `dim_turno`, três linhas, com hora de início e fim.** Ela é conformada entre
+`fct_leituras` e `fct_falhas`. O turno do técnico continua sendo texto em `dim_tecnico`,
+com o mesmo `accepted_values`, para a dimensão não virar outrigger. `dim_tempo` fica com
+um dia por linha, dia útil, mês, trimestre e estação.
 
 ### E. Trazer ou não o `dbt_utils`
 

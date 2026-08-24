@@ -314,6 +314,15 @@ dão um par cada, 2 máquinas de três versões dão três pares cada, e a `MAQ-
 quatro versões dá seis. Sem o teste, o defeito apareceria como custo dobrado em relatório,
 que é o erro que ninguém estranha porque parece que a máquina gastou muito.
 
+### As duas SCD1
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Turno em `dim_tecnico` | Texto, não FK para `dim_turno` | Dimensão apontando para dimensão é outrigger, e outrigger é snowflake entrando pela porta dos fundos numa modelagem que o rejeitou pela porta da frente. A conformidade entre os dois turnos é sustentada pelo `accepted_values` dos dois lados valendo sobre os mesmos três valores. O que `dim_turno` conforma de verdade são os dois fatos de leitura. |
+| `custo_hora` no técnico desconhecido | `NULL`, não zero | Zero afirmaria que a hora daquele técnico custa nada, o que é diferente de não se saber quanto custa. As 5 OS órfãs de técnico têm custo de mão de obra gravado na própria ordem, então este campo não entra em soma nenhuma. |
+| `codigo_linha` do ativo desconhecido | `'DESCONHECIDO'`, igual ao da linha desconhecida | Não é coincidência de nome, é o que fecha o caminho: o fato resolve o local pelo `codigo_linha` da versão do ativo, então a OS órfã cai no ativo desconhecido, que aponta para a linha desconhecida, sem `coalesce` nenhum na consulta. Membro desconhecido que não se encadeia com o da dimensão vizinha obriga cada fato a tratar o caso à mão. |
+| `dim_tecnico` e `dim_local` como SCD1 | Sim | O custo real de manter SCD2 é uma versão por mudança, o join de todo fato passando a depender da data do evento, e um teste de sobreposição para manter de pé. Isso se paga quando alguma pergunta depende do passado. Nenhuma das cinco pergunta o que o técnico era antes, e a de número 5 pergunta exatamente isso sobre o ativo. Por isso só ele é SCD2. |
+
 ## Pendentes
 
 As cinco decisões que este bloco listava foram todas fechadas na seção da Semana 3

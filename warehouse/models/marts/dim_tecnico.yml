@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: dim_tecnico
+    description: >
+      Equipe de manutencao. Grain: um tecnico. 13 linhas: 12 reais mais o membro
+      desconhecido, que recebe as 5 OS de matricula inexistente. SCD1 por decisao:
+      nenhuma das cinco perguntas de negocio pergunta o que o tecnico era antes.
+    columns:
+      - name: tecnico_sk
+        description: Chave. -1 e' o desconhecido.
+        data_tests:
+          - unique
+          - not_null
+      - name: matricula
+        description: Codigo natural, TEC-001 a TEC-012.
+        data_tests:
+          - unique
+          - not_null
+      - name: nome
+        description: Nome do tecnico. Sintetico.
+        data_tests:
+          - not_null
+      - name: especialidade
+        description: Determina o custo hora. Preditiva custa mais por envolver instrumento e laudo.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['mecanica', 'eletrica', 'preditiva', 'desconhecido']
+      - name: turno
+        description: >
+          Turno de trabalho, como texto e nao como FK para dim_turno. Dimensao
+          apontando para dimensao e' outrigger, e outrigger e' snowflake pela porta dos
+          fundos. Os valores sao os mesmos tres da dim_turno, e o accepted_values dos
+          dois lados e' o que sustenta isso.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['manha', 'tarde', 'noite', 'desconhecido']
+      - name: custo_hora
+        description: >
+          Custo hora em reais. Nulo no membro desconhecido, e nao zero: zero afirmaria
+          que a hora daquele tecnico custa nada, que e' diferente de nao se saber
+          quanto custa.
