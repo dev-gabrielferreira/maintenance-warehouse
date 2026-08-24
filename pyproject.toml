@@ -1,0 +1,43 @@
+[project]
+name = "maintenance-warehouse"
+version = "0.1.0"
+description = "Warehouse dimensional de manutencao industrial: AI4I 2020 mais mundo sintetico, medalhao bronze/silver/gold com dbt sobre PostgreSQL"
+authors = [
+    { name = "Gabriel Ferreira", email = "dev.gabrielfer@gmail.com" }
+]
+# 3.14 fica de fora de proposito: o dbt-core tem issue aberta com ela (mashumaro e
+# pydantic v1, que e' end-of-life e nao suporta 3.14). O .python-version fixa 3.12,
+# que e' a mesma do P1, mas 3.13 tambem passa para quem clonar com ela instalada.
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    # Leitura do AI4I e geracao do mundo sintetico. A carga em si e' COPY via psycopg:
+    # o to_sql do pandas puxaria SQLAlchemy junto e faz INSERT por baixo do pano.
+    "pandas>=2.2",
+    # psycopg 3, nao psycopg2. O 3 tem COPY nativo com context manager, que e' o que
+    # o loader usa para empurrar a bronze. O extra [binary] evita compilar o libpq.
+    "psycopg[binary]>=3.2",
+    # Download do dataset do UCI.
+    "requests>=2.32",
+    # Le o .env sem precisar exportar variavel na shell antes de cada execucao.
+    "python-dotenv>=1.0",
+    # dbt Core, nao Fusion: o Fusion ainda nao suporta Postgres (verificado em agosto
+    # de 2026, registrado em docs/decisions.md). O dbt-postgres ja declara dbt-core<2.0,
+    # o que impede o resolvedor de puxar o 2.0.0-alpha por engano.
+    "dbt-core>=1.10,<2.0",
+    "dbt-postgres>=1.9",
+]
+
+[project.scripts]
+# E' o que faz o `uv run seed` do criterio de aceite funcionar de verdade.
+seed = "seed.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# O pacote seed/ mora na raiz, nao em src/, porque e' assim que a secao 6 do
+# docs/PLANO.md desenha o repositorio. Sem estas duas linhas o uv_build procuraria
+# em src/ e nao acharia nada.
+module-root = ""
+module-name = "seed"
