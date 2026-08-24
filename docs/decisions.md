@@ -291,6 +291,29 @@ Done. PASS=0 WARN=0 ERROR=1 SKIP=0 NO-OP=0 REUSED=0 TOTAL=1
 São 80 versões onde deveriam ser 111. O build fica vermelho e a linha que o teste
 devolve diz o comando a rodar.
 
+### As duas bordas da vigencia em dim_ativo
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Início da vigência da primeira versão | `-infinity` | Já registrado nas convenções da gold, e vale repetir o número: são 365 leituras anteriores à data de instalação do próprio ativo, em 5 máquinas. Com a vigência começando na instalação, essas leituras não achariam versão e cairiam no ativo desconhecido. A `data_instalacao` continua na dimensão como atributo, para o teste ter o que comparar. |
+| Fim da vigência da versão atual | `infinity`, não `NULL` | Com `infinity`, o join do fato é `evento >= valido_de and evento < valido_ate` e acabou. Com `NULL`, toda consulta precisaria de `coalesce` ou de `is null` na condição, e quem esquecesse perderia exatamente as linhas da versão vigente, sem erro nenhum aparecer. Rejeitado o `NULL` que o dbt entrega por padrão no `dbt_valid_to`: é a convenção do snapshot, não a da dimensão, e a dimensão é quem tem que ser fácil de consultar. |
+| Intervalo aberto ou fechado | `[valido_de, valido_ate)`, fechado na esquerda | Evento que cai exatamente na data da mudança pertence à versão nova. As duas escolhas são defensáveis, e só uma delas não conta o mesmo evento duas vezes. Está escrito no modelo e no teste de sobreposição, que por isso compara com `<` estrito. |
+| Chave da dimensão | Por versão, não por máquina | 111 versões para 80 máquinas. `MAQ-066` sozinha tem quatro, porque trocou de linha três vezes. É o que torna errado o join de fato por `codigo_ativo`: ele casaria com as quatro de uma vez. |
+
+**A prova de que o teste de sobreposição pega o defeito.** Trocando o
+`coalesce(dbt_valid_to, 'infinity')` por `'infinity'` fixo, que faz toda versão parecer
+vigente:
+
+```
+5 of 19 FAIL 36 assert_dim_ativo_sem_sobreposicao ............... [FAIL 36 in 0.07s]
+  Got 36 results, configured to fail if != 0
+```
+
+São 36 pares, e o número fecha com a estrutura do parque: 24 máquinas de duas versões
+dão um par cada, 2 máquinas de três versões dão três pares cada, e a `MAQ-066` com
+quatro versões dá seis. Sem o teste, o defeito apareceria como custo dobrado em relatório,
+que é o erro que ninguém estranha porque parece que a máquina gastou muito.
+
 ## Pendentes
 
 As cinco decisões que este bloco listava foram todas fechadas na seção da Semana 3

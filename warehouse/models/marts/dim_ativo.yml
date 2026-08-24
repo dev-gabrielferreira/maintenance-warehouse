@@ -1,0 +1,96 @@
+version: 2
+
+models:
+  - name: dim_ativo
+    description: >
+      Parque de maquinas em SCD tipo 2. Grain: uma versao de uma maquina num intervalo
+      de validade [valido_de, valido_ate). 112 linhas: 111 versoes de 80 maquinas mais
+      o membro desconhecido.
+
+      Construida sobre o snap_ativo, que por sua vez e' alimentado pelo laco de
+      scripts/historico_ativo.sh. Rodar dbt build sem o laco deixa o historico errado,
+      e quem acusa isso e' o assert_historico_ativo_completo.
+    columns:
+      - name: ativo_sk
+        description: >
+          Chave da versao, nao da maquina. E' o que o fato guarda, resolvido pela data
+          do evento. Join de fato por codigo_ativo sozinho casa com todas as versoes de
+          uma vez e multiplica o custo pelo numero de reformas. -1 e' o desconhecido.
+        data_tests:
+          - unique
+          - not_null
+      - name: codigo_ativo
+        description: >
+          Codigo natural, MAQ-001 a MAQ-080. Continua aqui como atributo, para
+          conferencia, e NAO e' chave: com SCD2 ele identifica um conjunto de versoes.
+        data_tests:
+          - not_null
+      - name: versao
+        description: Ordem da versao dentro da maquina, de 1 em diante. 0 no desconhecido.
+        data_tests:
+          - not_null
+      - name: tipo
+        description: Qualidade da peca que a maquina produz. Muda o limite fisico do OSF.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['L', 'M', 'H', 'desconhecido']
+      - name: fabricante
+        description: Fabricante do equipamento. Sintetico.
+        data_tests:
+          - not_null
+      - name: codigo_linha
+        description: >
+          Linha de producao NESTA versao. E' por aqui que o fato chega no local do
+          evento, e nao pelo cadastro atual: maquina transferida em 2025 tem as
+          leituras de 2024 no setor antigo.
+        data_tests:
+          - not_null
+      - name: criticidade
+        description: Criticidade nesta versao. Muda por reclassificacao.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['alta', 'media', 'baixa', 'desconhecido']
+      - name: estado
+        description: Estado nesta versao. Passa a 'reformado' na data da reforma.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['operando', 'reformado', 'desconhecido']
+      - name: data_instalacao
+        description: >
+          Data de instalacao da maquina, igual em todas as versoes dela. Nao e' o
+          inicio da vigencia da versao 1, que e' -infinity de proposito. Fica aqui para
+          o teste de leitura anterior a instalacao ter o que comparar.
+      - name: valido_de
+        description: >
+          Inicio da vigencia, inclusive. -infinity na primeira versao, para nenhum
+          evento anterior ao cadastro ficar orfao.
+        data_tests:
+          - not_null
+      - name: valido_ate
+        description: >
+          Fim da vigencia, exclusive. infinity na versao vigente, e nao NULL: assim o
+          join do fato nao precisa de caso especial.
+        data_tests:
+          - not_null
+      - name: versao_atual
+        description: Verdadeiro na versao vigente. Atalho para quem quer so' o cadastro de hoje.
+        data_tests:
+          - not_null
+    data_tests:
+      # Duas versoes da mesma maquina nao podem comecar no mesmo instante.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - codigo_ativo
+              - valido_de
+      # Vigencia invertida nao existe. Se esta falhar, o encadeamento das versoes
+      # quebrou e todo join por data passa a devolver linha a menos.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "valido_de < valido_ate"
