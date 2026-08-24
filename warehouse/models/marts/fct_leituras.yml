@@ -1,0 +1,144 @@
+version: 2
+
+models:
+  - name: fct_leituras
+    description: >
+      Ciclos de operacao. Grain: uma linha e' um ciclo de uma maquina. 10.000 linhas,
+      uma por UDI.
+
+      Nao responde nada sobre a maquina entre dois ciclos, porque nao ha' medicao
+      continua, e nao responde tempo de operacao em horas, porque o ciclo tem instante
+      e nao duracao. Isso faz o MTBF deste warehouse ser medido em dias de calendario.
+    columns:
+      - name: udi
+        description: >
+          Identificador da leitura na fonte, 1 a 10.000. Degenerado: e' unico por linha
+          do fato e nao descreve nada que se repita.
+        data_tests:
+          - unique
+          - not_null
+      - name: ativo_sk
+        description: >
+          Versao do ativo vigente NO INSTANTE da leitura, resolvida na construcao do
+          fato. Nunca o codigo natural: MAQ-066 identifica quatro linhas da dimensao, e
+          o join por ele sozinho casaria com as quatro.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_ativo')
+                field: ativo_sk
+      - name: local_sk
+        description: >
+          Linha de producao DA VERSAO do ativo, e nao do cadastro de hoje. Maquina
+          transferida em 2025 tem as leituras de 2024 no setor antigo.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_local')
+                field: local_sk
+      - name: tempo_sk
+        description: Dia da leitura, YYYYMMDD.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: tempo_sk
+      - name: turno_sk
+        description: Turno em que o ciclo aconteceu.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_turno')
+                field: turno_sk
+      - name: produto_id
+        description: >
+          Codigo da peca produzida. Degenerado, com 10.000 valores distintos em 10.000
+          linhas: dimensao do tamanho do fato nao e' dimensao.
+        data_tests:
+          - unique
+          - not_null
+      - name: tipo_produto
+        description: Qualidade da peca. Muda o limite fisico do OSF.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['L', 'M', 'H']
+      - name: instante
+        description: Momento do ciclo. Sintetico, atribuido pelo gerador.
+        data_tests:
+          - not_null
+      - name: temperatura_ar_k
+        description: Temperatura do ar em Kelvin. Faixa da fonte, ver docs/fonte-ai4i.md.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 295.3
+                max_value: 304.5
+      - name: temperatura_processo_k
+        description: Temperatura do processo em Kelvin. Sempre acima da do ar.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 305.7
+                max_value: 313.8
+      - name: rotacao_rpm
+        description: Rotacao em rpm.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1168
+                max_value: 2886
+      - name: torque_nm
+        description: Torque em Nm.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 3.8
+                max_value: 76.6
+      - name: desgaste_ferramenta_min
+        description: Minutos acumulados de uso da ferramenta.
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 253
+      - name: diferenca_temperatura_k
+        description: >
+          Processo menos ar. Derivada, calculada uma vez aqui. E' metade da regra do
+          HDF, que dispara abaixo de 8,6 K junto com rotacao abaixo de 1.380 rpm.
+        data_tests:
+          - not_null
+      - name: potencia_w
+        description: >
+          Torque vezes rotacao em rad/s. Derivada. E' a regra do PWF, que dispara fora
+          da faixa de 3.500 a 9.000 W.
+        data_tests:
+          - not_null
+      - name: houve_falha
+        description: >
+          A definicao deste warehouse: falha declarada pela fonte OU algum modo
+          marcado. 357 linhas, o mesmo numero de OS corretivas.
+        data_tests:
+          - not_null
+      - name: falha_declarada_fonte
+        description: >
+          O rotulo original do AI4I, 339 linhas. Fica ao lado de houve_falha para a
+          divergencia de 18 linhas ser auditavel dentro do dado.
+        data_tests:
+          - not_null
+    data_tests:
+      # Nenhuma leitura pode cair no ativo desconhecido. Toda leitura aponta para ativo
+      # existente, e a vigencia da primeira versao comeca em -infinity, entao o -1 aqui
+      # significaria que a resolucao por data furou.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "ativo_sk <> -1"
+      # A fonte garante que o processo e' sempre mais quente que o ar. Se inverter,
+      # a regra do HDF perde o sentido fisico.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "diferenca_temperatura_k > 0"

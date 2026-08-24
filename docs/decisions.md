@@ -323,6 +323,38 @@ que é o erro que ninguém estranha porque parece que a máquina gastou muito.
 | `codigo_linha` do ativo desconhecido | `'DESCONHECIDO'`, igual ao da linha desconhecida | Não é coincidência de nome, é o que fecha o caminho: o fato resolve o local pelo `codigo_linha` da versão do ativo, então a OS órfã cai no ativo desconhecido, que aponta para a linha desconhecida, sem `coalesce` nenhum na consulta. Membro desconhecido que não se encadeia com o da dimensão vizinha obriga cada fato a tratar o caso à mão. |
 | `dim_tecnico` e `dim_local` como SCD1 | Sim | O custo real de manter SCD2 é uma versão por mudança, o join de todo fato passando a depender da data do evento, e um teste de sobreposição para manter de pé. Isso se paga quando alguma pergunta depende do passado. Nenhuma das cinco pergunta o que o técnico era antes, e a de número 5 pergunta exatamente isso sobre o ativo. Por isso só ele é SCD2. |
 
+### fct_leituras, e a prova do join errado
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Duas medidas derivadas no fato | `diferenca_temperatura_k` e `potencia_w` | São grandezas físicas com significado próprio, e são o que duas das três regras verificadas do AI4I usam: HDF olha a diferença de temperatura com a rotação, PWF olha a potência. Calculadas uma vez na gold em vez de reescritas em cada consulta e em cada teste. O produto desgaste vezes torque, do OSF, **não** entrou: aquilo é intermediário de uma regra, não grandeza física, e o lugar dele é dentro do teste. |
+| Duas colunas de falha lado a lado | `houve_falha` (357) e `falha_declarada_fonte` (339) | A decisão B escolheu a união, e manter o rótulo original ao lado torna a divergência de 18 linhas auditável dentro do próprio dado. Mesmo espírito da coluna `origem` em `dim_modo_falha`: quem consulta vê a diferença sem abrir documento nenhum. |
+| `codigo_ativo` no fato | Não existe | Com SCD2, o código natural identifica um conjunto de versões, e deixá-lo no fato seria oferecer a quem consulta exatamente a coluna com que se erra o join. O código natural mora na dimensão, para conferência. |
+| Cast de `pi()` para numeric | Obrigatório | `pi()` devolve `double precision`, o produto inteiro sobe para double, e o `round` de duas casas do Postgres só existe para `numeric`. Sem o cast o modelo não compila. Vale registrar porque parece detalhe e é o tipo de coisa que trava um build às onze da noite. |
+
+**Quanto custa errar o join, medido.** As duas formas de ligar as 10.000 leituras à
+`dim_ativo`:
+
+```
+            forma            | linhas
+-----------------------------+--------
+ join so pelo codigo natural |  14329
+ join com a vigencia         |  10000
+```
+
+São 43% de linhas a mais, e nenhum erro aparece. Onde dói mais:
+
+| Máquina | Versões | Leituras que viram |
+|---|---|---|
+| `MAQ-066` | 4 | 58 viram 232 |
+| `MAQ-060` | 2 | 137 viram 274 |
+
+O fato multiplica cada leitura pelo número de versões que a máquina teve, e o resultado
+é um custo maior, não um erro. É o defeito mais caro que uma SCD2 permite cometer,
+porque quem lê o relatório conclui que a máquina gastou muito, e não que a consulta está
+errada. É por isso que a chave é resolvida na construção do fato, e não deixada para
+quem consulta.
+
 ## Pendentes
 
 As cinco decisões que este bloco listava foram todas fechadas na seção da Semana 3
