@@ -1,0 +1,15 @@
+# Pacotes do dbt. Instalados por `dbt deps`, que escreve em dbt_packages/ (ignorado
+# pelo git, porque se refaz sozinho) e gera o package-lock.yml (versionado, porque
+# ele e' que garante a mesma versao em toda maquina).
+#
+# Por que dbt_utils entra na Semana 3 e nao antes: os quatro testes da Semana 2 eram
+# nativos, entao o pacote seria habito e nao necessidade. Aqui tres testes aparecem
+# juntos e nenhum deles existe no dbt: accepted_range para a faixa fisica dos
+# sensores, expression_is_true para regra de negocio, e
+# unique_combination_of_columns para provar o grain de fct_falhas e de dim_ativo.
+#
+# Versao fixa, nao faixa. Com ">=1.3.0" o dbt deps de amanha pode trazer outra
+# versao e mudar o resultado de um teste sem ninguem ter tocado no projeto.
+packages:
+  - package: dbt-labs/dbt_utils
+    version: 1.4.1

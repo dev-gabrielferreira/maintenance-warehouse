@@ -199,16 +199,50 @@ pasta `models/marts/` ainda não tem nenhum modelo. Some sozinho quando o primei
 nascer. Rejeitado tirar o bloco para calar o aviso: perderia o comentário que explica
 por que a gold é `table` e a silver é `view`.
 
+## Semana 3
+
+### As cinco decisões que o desenho tinha deixado em aberto
+
+Levantadas com opções e custos no fim da Semana 2, em
+[`modelo-dimensional.md`](modelo-dimensional.md), e fechadas no primeiro dia da Semana 3
+com os números conferidos no banco antes de escolher.
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Leitura com mais de um modo de falha | Fato próprio `fct_falhas`, grain (leitura, modo) | 324 leituras têm um modo marcado, 23 têm dois e 1 tem três. Com a definição de falha adotada abaixo, o fato tem 382 linhas e a pergunta "quantas paradas por modo" vira um `group by`. Rejeitado manter as cinco flags booleanas no fato: funciona, já estava pronto na silver, e não é dimensional, porque contar por modo viraria cinco somas separadas e um modo novo viraria coluna nova. Rejeitada a tabela ponte: é o Kimball clássico para multivalorado, mas traz o problema de peso, e somar custo por modo contaria a mesma parada duas vezes se ninguém ratear. O preço da escolha: duas tabelas de fato para o mesmo evento, e quem consulta precisa saber qual usar. |
+| O que a gold chama de "falha" | União: `falha_maquina` ou algum modo marcado, 357 eventos | A fonte discorda de si mesma em 27 linhas, e o desempate veio do dado e não do gosto: as 357 OS corretivas têm `udi_origem` preenchido nas 357, e 357 é exatamente o tamanho da união. Com ela, o teste "toda corretiva aponta para uma leitura com falha" fecha em zero. Rejeitado `falha_maquina` manda (339): 18 corretivas ficariam apontando para leitura que a gold não considera falha. Rejeitado "algum modo marcado" manda (348): 9 ficariam, e o membro INDETERMINADO perderia a razão de existir. O custo aceito, e que precisa estar escrito no README: o warehouse conta 357 falhas onde o dataset publica 339, porque a definição aqui é "evento que levou um técnico até a máquina", que é a definição de um warehouse de manutenção, e não o rótulo de um dataset de classificação. |
+| Como a SCD2 é construída | Laço de `dbt snapshot`, uma rodada por data de corte | São 31 datas distintas de mudança, entre 2024-03-04 e 2025-10-23, sobre 27 das 80 máquinas. Um modelo de estado do ativo parametrizado por `var` responde "como estava o parque nesta data", e o snapshot roda uma vez por data, em ordem crescente. Resultado esperado: 111 versões, que são 80 mais 31. Rejeitado montar o histórico direto em SQL com window function: é determinístico, roda num comando e não tem armadilha de ordem, mas não usa `dbt snapshot`, que é o que a seção 3 do plano decidiu e o que a entrevista pergunta. O custo aceito: o README ganha um passo entre o `uv run seed` e o `dbt build`, e a ordem crescente do laço passa a importar. |
+| Onde mora o turno | `dim_turno`, três linhas | O plano tinha listado `turno` como atributo de uma dimensão de grain diário, e há três turnos por dia: não cabe. Escolhida a dimensão própria em vez do atributo degenerado no fato porque `dim_tecnico` também tem turno, então ela nasce conformada, usada por um fato e descrevendo uma dimensão, que é exatamente o que a bus matrix existe para mostrar. `dim_tempo` fica com o clássico: um dia por linha, dia útil, mês, trimestre e estação. |
+| Pacote `dbt_utils` | Entra, versão 1.4.1 fixa | Três testes da semana não existem no dbt: `accepted_range` para a faixa física dos sensores, `expression_is_true` para regra de negócio e `unique_combination_of_columns` para provar o grain de `fct_falhas` e de `dim_ativo`. Escrever os três à mão funcionaria, e custaria uma dúzia de consultas de boilerplate só para faixa de sensor. Gerenciar pacote é parte do ofício, e o projeto passa a mostrar `packages.yml`, `dbt deps` e `package-lock.yml`. Os testes que são de verdade deste domínio (sobreposição de vigência na SCD2, histórico completo, corretiva sem leitura) continuam escritos à mão em `tests/`, porque pacote nenhum conhece essa regra. |
+
+Sobre a versão do pacote: fixa em `1.4.1`, não em faixa. Com `>=1.3.0` o `dbt deps` de
+amanhã pode trazer outra versão e mudar o resultado de um teste sem ninguém ter tocado
+no projeto. O `package-lock.yml` que o `dbt deps` gera é versionado, pela mesma razão do
+`uv.lock`, e o `dbt_packages/` fica no `.gitignore`, porque se refaz sozinho.
+
+### O que fazer quando o teste encontra a sujeira que nós mesmos plantamos
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Severidade dos testes de regra de negócio | `severity: error` com `error_if` no limiar auditado | Os 10 custos negativos, as 10 conclusões anteriores à abertura e as 5 instalações posteriores à primeira leitura são sujeira injetada, e continuam no warehouse por decisão da Semana 2. Com `error_if: '>10'` e `warn_if: '>0'`, os casos conhecidos pintam amarelo, o build passa, e o 11º caso pinta vermelho e barra. O teste deixa de ser "existe problema?" e passa a ser "o problema é maior do que a linha de base que auditamos?". Rejeitado deixar tudo em `warn`, como a Semana 2 fez com as órfãs: seria consistente e simples, e o teste nunca barraria nada, nem quando a sujeira dobrasse. Rejeitado tirar as linhas suspeitas do fato para uma quarentena: contraria a decisão da Semana 2 de que ordem com custo real não some do warehouse sem ninguém ver. O custo aceito: o número no `error_if` precisa ser mantido em dia se o gerador mudar, e por isso o comentário do `.yml` diz de onde ele veio. |
+
+### As convenções que valem para a gold inteira
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Surrogate key | Inteira, gerada com `row_number()` sobre ordem determinística | O código natural continua na dimensão como atributo, para conferência, e o fato guarda a surrogate. A razão é a `dim_ativo`: com SCD2, `MAQ-017` deixa de identificar uma linha e passa a identificar um conjunto de versões, e um fato que faça join por `codigo_ativo` sozinho casa com todas as versões de uma vez e multiplica o custo pelo número de reformas. O custo aceito, e declarado: como os marts são `table` reconstruída a cada build, a chave é estável dentro de um build e não entre builds. No dia em que um mart virar `incremental`, ela precisa passar a ser hash (`dbt_utils.generate_surrogate_key`). |
+| Chave de `dim_tempo` | `YYYYMMDD` como inteiro | É a exceção clássica do Kimball: a chave da dimensão de data é legível, ordenável e dispensa join para filtrar por período. Rejeitado usar `row_number()` aqui por consistência com as outras: consistência que custa legibilidade em toda consulta do warehouse não vale. |
+| Fato que não acha a dimensão | Membro desconhecido fixo em `-1`, nunca FK nula | As 8 OS órfãs de ativo e as 5 de técnico continuam no warehouse com custo real, e passam a apontar para o membro desconhecido. Fato com FK nula quebra o `inner join` e some da contagem sem avisar, que é o pior desfecho: o número fica errado e ninguém vê. Com o membro `-1`, os `relationships` que a Semana 2 deixou em `warn` sobem para `error` na gold, e a promessa registrada lá é cumprida. |
+| Início de vigência da primeira versão de cada ativo | `-infinity`, não a data de instalação | Achado que muda o modelo: 365 leituras acontecem antes da data de instalação do próprio ativo, em 5 máquinas, e isso é sujeira injetada de propósito. Se a versão 1 começasse na instalação, essas 365 leituras não achariam versão nenhuma e cairiam no ativo desconhecido, e o fato perderia dado por causa de um erro de cadastro. Quem acusa a instalação futura é teste singular, não descarte silencioso. |
+| Tamanho de `dim_modo_falha` | Sete linhas, não seis | O `modelo-dimensional.md` tinha escrito seis, contando os cinco modos do AI4I mais o INDETERMINADO. Faltava uma: as 651 preventivas não têm modo, e precisam do membro NAO_APLICA, senão volta a FK nula que a linha acima proíbe. A surrogate de cada modo vai escrita no próprio CSV do seed, para a chave não depender de ordem de carga. |
+
 ## Pendentes
 
-Decisões que o plano ainda vai cobrar, registradas aqui para não se perderem. As cinco
-da Semana 3 estão desenvolvidas, com opções e custos, em
-[`modelo-dimensional.md`](modelo-dimensional.md).
+As cinco decisões que este bloco listava foram todas fechadas na seção da Semana 3
+acima. O que sobra é da Semana 4.
 
 | Assunto | Quando | O que está em jogo |
 |---|---|---|
-| Leitura com mais de um modo de falha | Semana 3 | 24 leituras têm dois ou três modos marcados, e a FK simples `modo_falha_sk` do `PLANO.md` não comporta. Saídas: manter as cinco flags no fato, tabela ponte, ou um `fct_falhas` próprio de grain (leitura, modo), que teria 373 linhas contra 348 leituras com falha. |
-| Qual definição de "falha" a gold adota | Semana 3 | `Machine failure` e "algum modo marcado" discordam em 27 linhas. O warehouse precisa escolher uma, documentar, e não deixar as duas circulando. |
-| Como a SCD2 vai ser construída | Semana 3 | `dbt snapshot` grava o que enxerga na hora em que roda, e `bronze.ativos` é estático depois da carga: as 31 mudanças não viram histórico sozinhas. Ou o histórico é montado em SQL, ou o snapshot roda uma vez por data de corte. |
-| `dim_tempo` e o turno | Semana 3 | O `PLANO.md` listou `turno` como atributo de uma dimensão de grain diário, e há três turnos por dia. Vira atributo degenerado no fato ou uma `dim_turno` conformada com `dim_tecnico`. |
-| Trazer o `dbt_utils` | Semana 3 | Três testes da gold pedem `accepted_range`, `expression_is_true` e `unique_combination_of_columns`. Sem o pacote, viram teste singular escrito à mão. O `CLAUDE.md` manda perguntar antes de adicionar dependência. |
+| As 5 perguntas de negócio em SQL comentado | Semana 4 | São o consumo da gold e o critério de aceite do projeto. A de número 5, custo por máquina depois da reforma, é a que só existe com SCD2. |
+| A falha real do projeto, documentada | Semana 4 | O padrão da trilha pede um erro de verdade contado por inteiro. Candidatos até aqui: as 22 OS concluídas antes de abrir que ninguém injetou, achadas pela conferência da Semana 1, e o `[tool.uv] env-file` que o uv ignora em silêncio. |
+| Metabase lendo a gold | Semana 4, opcional | É o corte previsto se a semana estourar. Nunca as perguntas. |
