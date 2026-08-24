@@ -1,0 +1,40 @@
+# O warehouse inteiro deste projeto mora neste unico servico: bronze, silver e gold
+# sao schemas dentro do mesmo banco. O loader Python escreve na bronze e para por ali;
+# da bronze em diante quem transforma e' o dbt, por dentro do Postgres.
+
+services:
+  postgres:
+    # Imagem debian, nao a alpine. A alpine usa musl, que nao tem suporte completo a
+    # locale, e este projeto tem texto em portugues com acento (setor, nome de tecnico).
+    # ORDER BY sobre esse texto ordena diferente em musl, e 150 MB a menos nao paga isso.
+    image: postgres:17
+    container_name: maintenance-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      # Publicado so' no loopback. Sem o 127.0.0.1 na frente o Docker abre a porta em
+      # 0.0.0.0, e o banco passa a aceitar conexao de qualquer maquina da rede local.
+      # Quem precisa falar com ele de dentro do compose (Metabase, na semana 4) usa a
+      # rede interna e nao depende desta publicacao.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # `docker compose up -d` devolve o controle assim que o container sobe, mas o
+    # Postgres ainda leva alguns segundos ate aceitar conexao. Sem healthcheck, o
+    # `uv run seed` logo depois falharia com "connection refused" de forma intermitente,
+    # que e' o pior tipo de erro: some quando voce vai investigar.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  # Volume nomeado, nao bind mount para uma pasta do projeto. Bind mount deixaria os
+  # arquivos internos do Postgres dentro do repo, com dono root, e o `data/` do
+  # .gitignore existe para o dado bruto, nao para o banco.
+  pgdata:
