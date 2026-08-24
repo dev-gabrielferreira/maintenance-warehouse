@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: stg_locais
+    description: >
+      Hierarquia de local, 1:1 com a origem (12 linhas). Grain: uma linha de
+      producao. Planta contem setor, setor contem linha.
+    columns:
+      - name: codigo_linha
+        description: Codigo natural da linha, no formato SET-Lnn. Chave natural.
+        data_tests:
+          - unique
+          - not_null
+      - name: codigo_setor
+        description: Sigla do setor, tres letras.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['USI', 'MON', 'ACB', 'FER', 'EXP']
+      - name: nome_setor
+        description: Nome do setor por extenso.
+        data_tests:
+          - not_null
+      - name: planta
+        description: >
+          Unidade fabril. Vale "Planta Sorocaba" nas 12 linhas: o gerador cria uma
+          planta so'. A coluna existe porque a hierarquia da dim_local e' planta,
+          setor, linha, e uma dimensao que ja' nasce sem o nivel de cima obriga a
+          reescrever tudo no dia em que a segunda planta aparecer.
+        data_tests:
+          - not_null

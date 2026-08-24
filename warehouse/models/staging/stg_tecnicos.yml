@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: stg_tecnicos
+    description: >
+      Equipe de manutencao, 1:1 com a origem (12 linhas). Grain: um tecnico.
+    columns:
+      - name: matricula
+        description: Matricula, TEC-001 a TEC-012. Chave natural.
+        data_tests:
+          - unique
+          - not_null
+      - name: nome
+        description: Nome do tecnico. Sintetico.
+        data_tests:
+          - not_null
+      - name: especialidade
+        description: >
+          Determina o custo hora: mecanica 62, eletrica 71, preditiva 88 reais.
+          Preditiva custa mais porque envolve instrumento e laudo.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['mecanica', 'eletrica', 'preditiva']
+      - name: turno
+        description: Turno de trabalho. Mesmos tres da leitura_contexto.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['manha', 'tarde', 'noite']
+      - name: custo_hora
+        description: Custo hora em reais. Insumo do custo de mao de obra na gold.
+        data_tests:
+          - not_null

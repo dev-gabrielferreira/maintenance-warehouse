@@ -1,0 +1,73 @@
+version: 2
+
+models:
+  - name: stg_ativos
+    description: >
+      Parque de maquinas, 1:1 com a origem (80 linhas). Grain: uma maquina. Cadastro
+      num estado so'; o historico versionado e' da SCD2 da Semana 3.
+    columns:
+      - name: codigo_ativo
+        description: Codigo natural da maquina, MAQ-001 a MAQ-080. Chave natural.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: tipo
+        description: >
+          Tipo da maquina, herdado da proporcao de peca do AI4I (48 L, 24 M, 8 H).
+          Fixo por maquina: leitura de um tipo so' cai em maquina daquele tipo,
+          porque o tipo e' limite fisico na regra do OSF.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['L', 'M', 'H']
+
+      - name: fabricante
+        description: Cinco fabricantes sinteticos. Atributo de dimensao, nao usado em regra.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Romi', 'Mazak', 'DMG Mori', 'Haas', 'Okuma']
+
+      - name: codigo_linha
+        description: >
+          Onde a maquina esta' hoje. FK para stg_locais. As 15 transferencias do log
+          de mudancas nao aparecem aqui: este e' o estado do cadastro, nao a historia.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_locais')
+                field: codigo_linha
+
+      - name: criticidade
+        description: >
+          Peso da maquina na producao. Segue o tipo sem ser rigido: H tende a alta, L
+          tende a media ou baixa. E' o eixo de corte da pergunta de MTBF e MTTR.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['alta', 'media', 'baixa']
+
+      - name: data_instalacao
+        description: >
+          Entrada em operacao. Cinco maquinas tem data posterior a primeira leitura
+          delas, sujeira injetada de proposito. Nao e' filtrada aqui: e' violacao de
+          regra de negocio, e o teste singular que a acusa e' da Semana 3.
+        data_tests:
+          - not_null
+
+      - name: estado
+        description: >
+          Situacao do ativo. Vale 'operando' nas 80 linhas hoje, mesmo com 6 reformas
+          no log de mudancas, porque a origem e' cadastro e nao historico. O
+          accepted_values ja' aceita 'reformado' porque esse e' o dominio da coluna
+          na dimensao, e nao o que a fotografia de hoje contem.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['operando', 'reformado']
