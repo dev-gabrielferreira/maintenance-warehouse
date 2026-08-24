@@ -1,0 +1,24 @@
+# Este arquivo E' versionado, e pode ser: nao ha' um unico segredo aqui dentro.
+# Todo valor sai de env_var, resolvido a partir do .env, que o .gitignore barra.
+#
+# A regra do CLAUDE.md proibe credencial no repositorio, nao o arquivo. Versionar
+# o profiles.yml assim deixa quem clona com a conexao pronta (copia o .env e roda)
+# e ainda deixa visivel, no proprio arquivo, como o projeto trata segredo.
+#
+# As variaveis chegam ao dbt pelo --env-file do uv:
+#   uv run --env-file .env dbt build --project-dir warehouse
+
+maintenance_warehouse:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('POSTGRES_HOST', 'localhost') }}"
+      port: "{{ env_var('POSTGRES_PORT', '5432') | int }}"
+      user: "{{ env_var('POSTGRES_USER') }}"
+      password: "{{ env_var('POSTGRES_PASSWORD') }}"
+      dbname: "{{ env_var('POSTGRES_DB') }}"
+      # Schema base do dbt. A bronze nao aparece aqui: ela e' escrita pelo loader
+      # e o dbt so' a le', declarada como source na semana 2.
+      schema: "{{ env_var('DBT_SCHEMA', 'analytics') }}"
+      threads: 4

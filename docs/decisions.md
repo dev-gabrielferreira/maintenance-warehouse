@@ -85,6 +85,16 @@ Documento vivo: decisão nova entra aqui no mesmo commit em que entra no código
 | Transação | Uma só para as sete tabelas | Ou a bronze inteira troca, ou nada troca. Bronze meio velha e meio nova daria resultado que ninguém consegue reproduzir depois. |
 | Leitura do arquivo na carga | `COPY` em blocos de 64 KB, direto do arquivo | Sem pandas no meio. O pandas está no gerador, que é onde ele ajuda; aqui ele só repassaria bytes, ao custo de carregar tudo na memória. Hoje são 522 KB e caberiam com folga, mas o dia em que a fonte crescer não deveria exigir reescrever o loader. |
 
+### O projeto dbt
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Onde mora o `profiles.yml` | Versionado em `warehouse/`, contendo só `env_var()` | A regra do `CLAUDE.md` proíbe credencial no repositório, não o arquivo. Sem nenhum valor literal dentro, versionar não vaza nada e deixa quem clona com a conexão pronta: copia o `.env` e roda. Rejeitado `~/.dbt/profiles.yml`: é o caminho que a documentação mostra primeiro, mas obriga cada pessoa a criar o arquivo à mão antes do primeiro `dbt run`, e isso é um passo a mais no "roda em qualquer máquina". Conferido com `grep`: fora da estrutura YAML, o arquivo não tem um único valor. |
+| Como as variáveis chegam ao dbt | `uv run --env-file .env dbt ...` | O dbt lê variável de ambiente do processo, e o `.env` é arquivo. O `--env-file` do uv resolve sem exportar nada na shell e sem dependência nova (`direnv` e afins). Quem quiser encurtar exporta `UV_ENV_FILE=.env` no shell. |
+| `[tool.uv] env-file` no `pyproject.toml` | Removido | Testado e **ignorado em silêncio** pelo uv 0.12.5: a chave é aceita no arquivo e a variável não chega ao processo. Chave que não faz nada e parece que faz é pior que chave nenhuma, porque o próximo a ler o arquivo acredita nela. |
+| Materialização da staging | `view` | A silver renomeia, converte tipo e limpa, e nada disso precisa ficar em disco. Reprocessar um select sobre 10 mil linhas é barato, e em troca a silver nunca fica velha em relação à bronze. |
+| Materialização dos marts | `table` | O fato faz join com várias dimensões e quem consulta o star quer resposta rápida. Aqui a materialização se paga. |
+
 ### Achados da fonte que viraram decisão
 
 Detalhamento em [`fonte-ai4i.md`](fonte-ai4i.md).
@@ -101,6 +111,5 @@ Decisões que o plano ainda vai cobrar, registradas aqui para não se perderem:
 
 | Assunto | Quando | O que está em jogo |
 |---|---|---|
-| Onde mora o `profiles.yml` | Bloco 1.7 | Fora do repositório em `~/.dbt/`, ou dentro do repositório contendo só chamadas `env_var()`. A segunda é mais reprodutível para quem clona e não coloca segredo no git. |
 | Leitura com mais de um modo de falha | Semana 3 | 24 leituras têm dois ou três modos marcados. A FK simples `modo_falha_sk` da seção 5 do `PLANO.md` não comporta. Saídas possíveis: manter as cinco flags no fato, criar tabela ponte, ou criar um fato próprio de falhas com grain (leitura, modo). |
 | Qual definição de "falha" a gold adota | Semana 3 | `Machine failure` e "algum modo marcado" discordam em 27 linhas. O warehouse precisa escolher uma, documentar, e não deixar as duas circulando. |

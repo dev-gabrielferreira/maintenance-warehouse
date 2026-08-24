@@ -1,0 +1,30 @@
+name: 'warehouse'
+version: '1.0.0'
+config-version: 2
+
+# Aponta para o bloco de conexao do profiles.yml, que fica ao lado deste arquivo e
+# nao guarda credencial nenhuma: so' chamadas env_var, resolvidas a partir do .env.
+profile: 'maintenance_warehouse'
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+snapshot-paths: ["snapshots"]
+analysis-paths: ["analyses"]
+macro-paths: ["macros"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  warehouse:
+    # A silver e' view: ela renomeia, converte tipo e limpa, e nada disso precisa
+    # ficar materializado em disco. Consultar a view custa reprocessar um select
+    # sobre 10 mil linhas, o que e' barato, e em troca a silver nunca fica velha.
+    staging:
+      +materialized: view
+    # A gold e' table: o fato faz join com varias dimensoes, e quem consulta o star
+    # quer resposta rapida. Aqui a materializacao se paga.
+    marts:
+      +materialized: table
