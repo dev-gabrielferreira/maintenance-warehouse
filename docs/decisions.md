@@ -250,6 +250,47 @@ O aviso `Configuration paths exist in your dbt_project.yml file which do not app
 any resources: models.warehouse.marts`, que a Semana 2 registrou como pendente, sumiu
 com o nascimento da `dim_tempo`, exatamente como estava previsto.
 
+### A SCD2, e o erro de um a menos que quase passou
+
+O laço de `dbt snapshot` funcionou na primeira tentativa e produziu **110 versões**,
+onde a conta dizia 111. A diferença de uma linha era o projeto inteiro:
+
+| Achado | O que era |
+|---|---|
+| A `MAQ-066` tinha 3 mudanças e só 3 versões, quando deveria ter 4 | Ela trocou de linha em 2024-03-04, que é **a primeira data de mudança do parque**, e portanto a primeira data de corte do laço. A primeira rodada do snapshot já a viu alterada, então o estado anterior dela nunca foi gravado. |
+
+A correção não foi cravar uma data no script, e sim o laço passar a rodar **32 vezes em
+vez de 31**: o dia anterior à primeira mudança, que grava a linha de base, mais as 31
+datas de mudança. A data da linha de base é calculada (`min(data_mudanca) - 1`), para o
+laço continuar certo se a semente do gerador mudar.
+
+Vale registrar como o erro apareceu, porque é o tipo que não aparece: nada falhou, nada
+ficou vermelho, e a única pista era um número um a menos numa conferência que só existia
+porque alguém decidiu conferir. Sem a contagem esperada escrita em algum lugar, a
+`MAQ-066` teria entrado no warehouse tendo nascido na linha USI-L04, e a resposta sobre
+o passado dela estaria errada com toda a confiança do mundo.
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Estratégia do snapshot | `timestamp`, com `updated_at` na data da mudança | Rejeitada a `check`, que compara colunas: ela carimba o `dbt_valid_from` com a hora em que o comando rodou, e o histórico ficaria com data de execução em vez de data de negócio. Duas pessoas rodando o projeto em dias diferentes teriam warehouses diferentes. |
+| Materialização do `int_ativo_estado` | `ephemeral` | Não é economia de disco, é requisito. O modelo depende de `var('data_corte')`, e o snapshot precisa resolver esse var na hora em que o snapshot roda. Como view, o valor ficaria congelado no último `dbt run` e o laço custaria dois comandos por data em vez de um. Verificado na 1.12.3: `ref()` de modelo ephemeral dentro de snapshot é inlinado como CTE, e funciona. |
+| Onde o laço lê as datas | Macro `datas_de_mudanca`, no dbt | Rejeitado um `psql` dentro do script: ele precisaria descobrir host, porta e senha por conta própria, e o projeto passaria a ter duas definições de "onde fica o banco" para divergir uma da outra. Pela macro, o laço usa a mesma conexão do `profiles.yml`. |
+| Como o script conta o que gravou | Consulta ao banco no fim, não a saída do dbt | Primeira versão do script lia `SELECT 80` da linha do snapshot. A partir da segunda rodada aquilo vira `INSERT 0 0`, que é o retorno do último comando enviado ao Postgres e não a contagem de versões abertas. Número que parece contagem e não é contagem é pior que número nenhum. De quebra, o `grep` que não achava nada matava o script pelo `set -e`, em silêncio, na segunda data. |
+| Teste de mudança anterior à instalação | Existe, e hoje retorna zero | Não está lá por regra de negócio, está lá protegendo o mecanismo. Se um ativo tivesse instalação posterior a alguma mudança dele, o `atualizado_em` daria um passo para trás entre dois cortes, e a estratégia `timestamp` descartaria a mudança em silêncio. Zero linhas hoje, e o teste fica para o dia em que a semente mudar. |
+
+**A prova de que o teste de completude pega o erro.** Derrubando o snapshot e rodando
+`dbt snapshot` uma vez só, que é o que acontece com quem clona o projeto e roda `dbt
+build` sem o laço:
+
+```
+1 of 1 FAIL 1 assert_historico_ativo_completo .................... [FAIL 1 in 0.05s]
+  Got 1 result, configured to fail if != 0
+Done. PASS=0 WARN=0 ERROR=1 SKIP=0 NO-OP=0 REUSED=0 TOTAL=1
+```
+
+São 80 versões onde deveriam ser 111. O build fica vermelho e a linha que o teste
+devolve diz o comando a rodar.
+
 ## Pendentes
 
 As cinco decisões que este bloco listava foram todas fechadas na seção da Semana 3

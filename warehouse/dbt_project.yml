@@ -28,11 +28,30 @@ models:
       # profiles.yml. Assim silver e gold nao se misturam no mesmo lugar, e a
       # bronze continua sendo a unica que o dbt nao escreve.
       +schema: staging
+    # Ephemeral: o modelo nao vira tabela nem view, ele e' inlinado como CTE dentro
+    # de quem o referencia. Aqui isso nao e' economia de disco, e' requisito. O
+    # int_ativo_estado depende de var('data_corte'), e o snapshot precisa resolver
+    # esse var na hora em que o snapshot roda. Se fosse view, o valor ficaria
+    # congelado no ultimo `dbt run` e o laco precisaria de dois comandos por data.
+    intermediate:
+      +materialized: ephemeral
     # A gold e' table: o fato faz join com varias dimensoes, e quem consulta o star
     # quer resposta rapida. Aqui a materializacao se paga.
     marts:
       +materialized: table
       +schema: marts
+
+snapshots:
+  warehouse:
+    # Schema proprio. O snapshot nao e' silver nem gold: ele e' o registro de como o
+    # cadastro mudou, e a dim_ativo e' construida em cima dele.
+    +schema: snapshots
+
+vars:
+  # Data ate' a qual as mudancas de cadastro sao aplicadas. O laco de
+  # scripts/historico_ativo.sh sobrescreve isto uma vez por data de mudanca. O padrao
+  # bem no futuro faz um `dbt build` avulso enxergar o parque no estado final.
+  data_corte: '2099-12-31'
 
 seeds:
   warehouse:
