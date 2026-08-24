@@ -5,8 +5,11 @@
 # o profiles.yml assim deixa quem clona com a conexao pronta (copia o .env e roda)
 # e ainda deixa visivel, no proprio arquivo, como o projeto trata segredo.
 #
-# As variaveis chegam ao dbt pelo --env-file do uv:
-#   uv run --env-file .env dbt build --project-dir warehouse
+# As variaveis chegam ao dbt pelo --env-file do uv. Rodando da raiz do repositorio,
+# sao dois diretorios a informar, e nao um: --project-dir diz onde esta' o projeto,
+# mas o dbt procura o profiles.yml em ~/.dbt se ninguem disser o contrario.
+#
+#   uv run --env-file .env dbt build --project-dir warehouse --profiles-dir warehouse
 
 maintenance_warehouse:
   target: dev

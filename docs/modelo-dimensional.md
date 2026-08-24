@@ -148,7 +148,7 @@ As 31 linhas de `stg_mudancas_ativo` não viram histórico sozinhas.
 | Caminho | A favor | Contra |
 |---|---|---|
 | Montar o histórico em SQL, num modelo que já sai com `valid_from` e `valid_to` | Determinístico, reproduz igual em qualquer máquina, roda num comando | Não usa `dbt snapshot`, que é o que o plano pede e o que a entrevista pergunta |
-| View de estado do ativo parametrizada por data de corte, e rodar `dbt snapshot --vars` uma vez por data de mudança | Usa a ferramenta de verdade, e a tabela de snapshot fica com versões reais, `dbt_valid_from` e `dbt_valid_to` preenchidos pelo dbt | Precisa de um laço no shell com as 23 datas distintas de mudança, e "roda em qualquer máquina" passa a depender desse laço estar no README |
+| View de estado do ativo parametrizada por data de corte, e rodar `dbt snapshot --vars` uma vez por data de mudança | Usa a ferramenta de verdade, e a tabela de snapshot fica com versões reais, `dbt_valid_from` e `dbt_valid_to` preenchidos pelo dbt | Precisa de um laço no shell com as 31 datas distintas de mudança, e "roda em qualquer máquina" passa a depender desse laço estar no README |
 
 Inclinação: o segundo. O ponto do projeto é saber operar snapshot, e o laço vira três
 linhas documentadas. O primeiro caminho fica registrado como alternativa rejeitada.

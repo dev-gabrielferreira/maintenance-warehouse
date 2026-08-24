@@ -69,7 +69,7 @@ Documento vivo: decisão nova entra aqui no mesmo commit em que entra no código
 | Duração do reparo por modo | 2h a 16h, conforme o modo | Calibrado pelo Gabriel: HDF e PWF são limpeza de trocador e reset de acionamento, resolvem dentro do turno (2h a 6h). OSF e TWF envolvem troca de componente e espera de peça (4h a 16h). RNF, 1h a 3h. Rejeitada a faixa de 4h a 72h: realista para equipamento sem estoque, mas transformaria o projeto numa discussão sobre almoxarifado. |
 | Quais leituras viram ordem corretiva | União: `Machine failure = 1` **ou** algum modo marcado | 357 corretivas. Rejeitado escolher uma das duas definições aqui, porque isso esconderia na origem as duas incoerências da fonte. Elas seguem para a bronze, e a escolha é da gold, documentada. |
 | Modo atribuído quando há mais de um | O de maior duração de reparo | Vale só para dar duração e custo à OS, já que é o modo mais demorado que determina quanto tempo a máquina fica parada. As 24 leituras com dois ou três modos continuam com todos eles no fato: a modelagem do múltiplo é assunto da Semana 3. |
-| Aderência do plano preventivo | 85% dentro de 7 dias | Os 15% restantes atrasam de 15 a 60 dias, e um terço deles não acontece (conclusão vazia). Sem preventiva atrasada, a pergunta "preventiva em dia reduz corretiva no trimestre seguinte" não teria os dois lados para comparar. Resultado: 651 preventivas, 44 não executadas. |
+| Aderência do plano preventivo | 85% dentro de 7 dias | Os 15% restantes atrasam de 15 a 60 dias, e um terço deles não acontece (conclusão vazia). Sem preventiva atrasada, a pergunta "preventiva em dia reduz corretiva no trimestre seguinte" não teria os dois lados para comparar. Resultado: 651 preventivas, 36 não executadas (o 44 esteve escrito aqui por engano até a Semana 2; conferido no banco, são 36, com data de conclusão nula, duração zero e custo zero batendo entre si). |
 | Quantidade de sujeira | Fixa e declarada em constante no topo do módulo | 200 leituras duplicadas, 8 OS órfãs de ativo, 5 de técnico, 10 com custo negativo, 10 com datas invertidas, 5 ativos instalados depois da primeira leitura. Números conferidos um a um, e todos vão a zero com `--sem-sujeira`. O README pode dizer "são 200 duplicatas" sem ninguém precisar contar. |
 | Bug encontrado pela própria conferência | Conclusão da preventiva passou a sair da abertura | A conferência acusou 32 OS concluídas antes de abrir, quando só 10 tinham sido injetadas. As outras 22 vinham de sortear a hora da abertura e a da conclusão de forma independente: preventiva realizada no mesmo dia podia abrir às 22h e concluir às 6h. Corrigido somando atraso e duração à abertura. Sujeira que ninguém escolheu injetar é sujeira que o README descreveria errado. |
 
@@ -105,11 +105,110 @@ Detalhamento em [`fonte-ai4i.md`](fonte-ai4i.md).
 | `TWF` como teste determinístico | Não | As regras de HDF, PWF e OSF reproduzem as colunas exatamente contra o dado (115/115, 95/95, 98/98) e viram teste com resposta conhecida. O TWF não fecha: a documentação do dataset fala em troca de ferramenta entre 200 e 240 minutos de desgaste, e o arquivo tem casos de 198 a 253. Testar contra a regra documentada acusaria erro que é da documentação, não do warehouse. |
 | Sujeira real da fonte | Mantida, não corrigida na bronze | O AI4I traz 9 linhas com `Machine failure = 1` e nenhum modo marcado, e 18 linhas de `RNF` que não contam como falha de máquina. Bronze guarda o dado como veio. A decisão de o que fazer com essas linhas é da silver, em SQL, e o teste que as encontra vale mais que a sujeira injetada por nós, porque está em dado público que qualquer um pode conferir. |
 
+## Semana 2
+
+### Onde mora cada teste
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Camada onde os testes vivem | Nos dois: fonte em `warn`, staging em `error` | São duas perguntas diferentes com a mesma sintaxe. O teste na bronze responde "quanta sujeira chegou?" e não pode barrar nada, porque a bronze é o dado como veio. O teste na staging responde "o que sai daqui está limpo?" e barra. Rejeitado testar só na staging: economizaria a repetição no YAML, mas a sujeira deixaria de aparecer na tela em toda execução e a prova de que os testes valem algo dependeria de alguém lembrar de rodar um passo manual. |
+| As 13 OS órfãs (8 de ativo, 5 de técnico) | Ficam na staging, com `relationships` em `warn` | São ordens com custo real. Rejeitado descartar com anti-join: o build ficaria verde e 13 ordens sumiriam do warehouse sem ninguém ver, que é o pior desfecho possível. Rejeitado `error` desde já: deixaria o build vermelho e quebraria o critério de aceite. Na Semana 3 elas passam a apontar para o membro "desconhecido" da dimensão e o teste sobe para `error`. Severidade é decisão de contrato, com prazo, não botão de mudo. |
+| Nome dos schemas do dbt | Padrão: `analytics_staging` e `analytics_marts` | Rejeitado sobrescrever o macro `generate_schema_name` para gerar `silver` e `gold` literais no banco. Ficaria bonito num `\dn` do psql ao lado da `bronze`, mas custa um macro que muda comportamento global do projeto, e qualquer pessoa que já usou dbt espera encontrar o padrão. Medalhão é vocabulário do README, não do catálogo. |
+| Pacote `dbt_utils` | Fora da Semana 2 | Os quatro testes que o plano pede são nativos. O pacote entra na conversa na Semana 3, quando `accepted_range`, `expression_is_true` e `unique_combination_of_columns` aparecerem juntos, e aí vira pergunta em vez de hábito. |
+| Um `.yml` por modelo | Sim | Rejeitado o `_stg__models.yml` único que o guia da dbt Labs sugere: com um arquivo por modelo, cada bloco de trabalho fecha sozinho e o diff do commit mostra o modelo e o contrato dele lado a lado. |
+| Sintaxe dos testes genéricos | `arguments:` separado de `config:` | A primeira execução acusou `MissingArgumentsPropertyInGenericTestDeprecation`. A partir do dbt 1.12, `to`, `field` e `values` moram num bloco `arguments:` próprio, e `severity` fica em `config:`. A forma antiga ainda roda, mas escrever certo agora evita uma migração inteira depois. |
+
+### O que a silver faz e o que ela recusa a fazer
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| O que a staging transforma | Renome, tipo e deduplicação. Nada mais | Rejeitado somar `custo_mao_obra` com `custo_pecas` em `stg_ordens_servico`. É cálculo, e cálculo mora na gold: se a soma nascesse na silver, dois modelos poderiam somar de formas diferentes mais adiante e não haveria uma versão canônica. |
+| Sujeira que é regra de negócio | Passa intacta pela silver | Os 10 custos negativos, as 10 conclusões anteriores à abertura e os 5 ativos instalados depois da primeira leitura continuam lá. Não são erro de estrutura, são violação de regra, e quem as acusa é o teste singular da Semana 3. Corrigir em silêncio na staging apagaria a prova. |
+| Dedup por `row_number` e não por `distinct` | `row_number` | As 200 cópias de `leitura_contexto` são idênticas em todas as colunas, então o `distinct` daria o mesmo resultado hoje. Ele para de funcionar no dia em que a mesma chave chegar duas vezes com um campo diferente. A janela obriga a responder qual cópia vence, e a resposta fica escrita no `order by`. |
+| `not_null` em `data_conclusao` | Não existe | 36 preventivas foram planejadas e não aconteceram. O nulo ali é a resposta, não a ausência dela, e é metade da pergunta de aderência ao plano. Teste que exigisse valor estaria errado sobre o negócio, não sobre o dado. |
+| `relationships` em `udi_origem` | Não existe | O teste genérico do dbt trata nulo como violação, e `udi_origem` é nulo nas 651 preventivas por construção. A checagem certa é um teste singular filtrando `tipo_os = 'corretiva'`, e ele é da Semana 3. |
+| `quote: true` nas colunas do AI4I | Obrigatório no `sources.yml` | A bronze guardou `"UDI"` e `"Air temperature [K]"` com aspas, então o nome real tem maiúscula e espaço. Sem `quote: true` o dbt compila `select UDI`, o Postgres rebaixa para `udi` e o teste quebra por coluna inexistente. É o preço concreto de ter mantido os nomes feios na bronze, e ele termina aqui. |
+
+### A prova de que os testes pegam a sujeira
+
+O critério de aceite do projeto diz que desligar a limpeza tem que quebrar o build.
+Foram duas verificações, nesta ordem.
+
+**1. Comentar o filtro do dedup em `stg_leitura_contexto`.** Uma linha, `where _versao = 1`:
+
+```
+9 of 9 FAIL 200 unique_stg_leitura_contexto_udi ........... [FAIL 200 in 0.07s]
+  Got 200 results, configured to fail if != 0
+Done. PASS=8 WARN=0 ERROR=1 SKIP=0 NO-OP=0 REUSED=0 TOTAL=9
+```
+
+Repare que os outros 8 testes do modelo continuaram passando. Quebrou exatamente o
+teste que guarda aquela linha, e nenhum outro.
+
+**2. Recarregar a bronze sem sujeira nenhuma**, com `uv run seed --sem-sujeira`, e
+rodar o build inteiro:
+
+```
+Done. PASS=97 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=97
+```
+
+Zero avisos. Isso fecha a outra ponta do argumento: os 5 avisos do build normal vêm da
+sujeira injetada, e não de um modelo mal escrito que avisaria de qualquer jeito.
+
+**O build normal, com a sujeira no lugar**, tem 97 nós e este desenho:
+
+```
+Done. PASS=92 WARN=5 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=97
+```
+
+Os 5 avisos, e o que cada um significa:
+
+| Onde | Aviso | Leitura |
+|---|---|---|
+| fonte | `unique` em `leitura_contexto.udi`, 200 | Chegaram 200 duplicatas na bronze |
+| fonte | `relationships` de `ordens_servico.codigo_ativo`, 8 | 8 OS apontam para máquina que não existe |
+| fonte | `relationships` de `ordens_servico.matricula_tecnico`, 5 | 5 OS apontam para técnico que não existe |
+| staging | `relationships` de `stg_ordens_servico.codigo_ativo`, 8 | As mesmas 8, que a silver não descarta de propósito |
+| staging | `relationships` de `stg_ordens_servico.matricula_tecnico`, 5 | As mesmas 5 |
+
+A lista inteira cabe num parágrafo: **a fonte tem três avisos e a staging tem dois.** O
+que desapareceu no caminho foram as 200 duplicatas, e o que sobrou foram as órfãs, que
+a silver preserva de propósito. A diferença entre as duas listas é o trabalho que a
+camada silver fez, medido em vez de afirmado.
+
+### Achado sobre o comando
+
+O comentário do `profiles.yml` documentava `dbt build --project-dir warehouse`, que
+falha quando rodado da raiz:
+
+```
+Error: Invalid value for '--profiles-dir': Path '/home/gabriel/.dbt' does not exist.
+```
+
+`--project-dir` diz onde está o projeto, e não onde está o `profiles.yml`: sem
+`--profiles-dir`, o dbt procura em `~/.dbt`. Na Semana 1 isso passou porque os comandos
+foram rodados de dentro de `warehouse/`, onde o dbt acha o arquivo no diretório
+corrente. Comentário corrigido.
+
+### Aviso que fica até a Semana 3
+
+Todo build imprime `Configuration paths exist in your dbt_project.yml file which do not
+apply to any resources: models.warehouse.marts`. Está certo: o bloco `marts` existe no
+`dbt_project.yml` desde a Semana 1, com a decisão de materializar como `table`, e a
+pasta `models/marts/` ainda não tem nenhum modelo. Some sozinho quando o primeiro fato
+nascer. Rejeitado tirar o bloco para calar o aviso: perderia o comentário que explica
+por que a gold é `table` e a silver é `view`.
+
 ## Pendentes
 
-Decisões que o plano ainda vai cobrar, registradas aqui para não se perderem:
+Decisões que o plano ainda vai cobrar, registradas aqui para não se perderem. As cinco
+da Semana 3 estão desenvolvidas, com opções e custos, em
+[`modelo-dimensional.md`](modelo-dimensional.md).
 
 | Assunto | Quando | O que está em jogo |
 |---|---|---|
-| Leitura com mais de um modo de falha | Semana 3 | 24 leituras têm dois ou três modos marcados. A FK simples `modo_falha_sk` da seção 5 do `PLANO.md` não comporta. Saídas possíveis: manter as cinco flags no fato, criar tabela ponte, ou criar um fato próprio de falhas com grain (leitura, modo). |
+| Leitura com mais de um modo de falha | Semana 3 | 24 leituras têm dois ou três modos marcados, e a FK simples `modo_falha_sk` do `PLANO.md` não comporta. Saídas: manter as cinco flags no fato, tabela ponte, ou um `fct_falhas` próprio de grain (leitura, modo), que teria 373 linhas contra 348 leituras com falha. |
 | Qual definição de "falha" a gold adota | Semana 3 | `Machine failure` e "algum modo marcado" discordam em 27 linhas. O warehouse precisa escolher uma, documentar, e não deixar as duas circulando. |
+| Como a SCD2 vai ser construída | Semana 3 | `dbt snapshot` grava o que enxerga na hora em que roda, e `bronze.ativos` é estático depois da carga: as 31 mudanças não viram histórico sozinhas. Ou o histórico é montado em SQL, ou o snapshot roda uma vez por data de corte. |
+| `dim_tempo` e o turno | Semana 3 | O `PLANO.md` listou `turno` como atributo de uma dimensão de grain diário, e há três turnos por dia. Vira atributo degenerado no fato ou uma `dim_turno` conformada com `dim_tecnico`. |
+| Trazer o `dbt_utils` | Semana 3 | Três testes da gold pedem `accepted_range`, `expression_is_true` e `unique_combination_of_columns`. Sem o pacote, viram teste singular escrito à mão. O `CLAUDE.md` manda perguntar antes de adicionar dependência. |
