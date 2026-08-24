@@ -1,0 +1,47 @@
+-- EXERCICIO DE REESCRITA (Semana 2)
+--
+-- Reescreva stg_ordens_servico do zero, aqui, sem abrir o original em
+-- warehouse/models/staging/. Depois eu comparo os dois e aponto o que divergiu.
+--
+-- Este arquivo esta' fora de warehouse/models/ de proposito: o dbt nao o enxerga,
+-- entao ele nao entra no build e nao conflita com o modelo de verdade.
+--
+-- O QUE VOCE TEM
+--
+-- bronze.ordens_servico, 1.008 linhas, todas as colunas em text:
+--
+--   numero_os          OS-00001 em diante
+--   codigo_ativo       MAQ-001 a MAQ-080
+--   tipo_os            corretiva ou preventiva
+--   modo_falha         TWF HDF PWF OSF RNF INDETERMINADO, ou vazio
+--   udi_origem         numero da leitura que gerou a corretiva, ou vazio
+--   data_abertura      texto no formato 2024-03-15 14:32:00
+--   data_conclusao     idem, ou vazio
+--   matricula_tecnico  TEC-001 a TEC-012
+--   duracao_horas      decimal em texto
+--   custo_mao_obra     decimal em texto
+--   custo_pecas        decimal em texto
+--   _carregado_em      timestamptz (ja' vem tipada do loader)
+--   _arquivo_origem    text (idem)
+--
+-- O QUE O MODELO PRECISA FAZER
+--
+--   1. Ler a bronze por source(), nunca pelo nome cru da tabela.
+--   2. Converter cada coluna para o tipo certo.
+--   3. Manter 1:1 com a origem: 1.008 entram, 1.008 saem.
+--   4. Nao corrigir sujeira nenhuma e nao calcular nada.
+--
+-- AS QUATRO PERGUNTAS QUE O EXERCICIO COBRA
+--
+--   a) 651 linhas tem modo_falha vazio. Isso e' dado faltando ou e' o significado
+--      da linha? A resposta muda o que voce escreve, ou nao muda nada?
+--   b) 36 linhas tem data_conclusao vazia. Quais testes voce NAO pode colocar
+--      nessa coluna, e por que?
+--   c) 8 linhas apontam para ativo inexistente e 5 para tecnico inexistente. Sua
+--      staging descarta, corrige ou deixa passar? Justifique em uma frase.
+--   d) 10 linhas tem custo_pecas negativo. Mesma pergunta.
+--
+-- Escreva tambem o .yml de testes, do zero. Ele vale tanto quanto o SQL.
+--
+-- Comece abaixo desta linha.
+-- ---------------------------------------------------------------------------
