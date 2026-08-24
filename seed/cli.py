@@ -7,7 +7,7 @@ O loader entra no bloco 1.6 do plano.
 
 import argparse
 
-from seed import download, generator
+from seed import download, generator, loader
 
 
 def main() -> int:
@@ -28,7 +28,8 @@ def main() -> int:
     download.main()
     print()
     generator.main(sem_sujeira=args.sem_sujeira)
+    print()
+    loader.main()
 
-    print("\nfalta implementar:")
-    print("  1.6 loader da bronze")
+    print("\nbronze carregada. Daqui em diante quem transforma e' o dbt.")
     return 0

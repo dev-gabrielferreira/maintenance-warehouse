@@ -73,6 +73,18 @@ Documento vivo: decisão nova entra aqui no mesmo commit em que entra no código
 | Quantidade de sujeira | Fixa e declarada em constante no topo do módulo | 200 leituras duplicadas, 8 OS órfãs de ativo, 5 de técnico, 10 com custo negativo, 10 com datas invertidas, 5 ativos instalados depois da primeira leitura. Números conferidos um a um, e todos vão a zero com `--sem-sujeira`. O README pode dizer "são 200 duplicatas" sem ninguém precisar contar. |
 | Bug encontrado pela própria conferência | Conclusão da preventiva passou a sair da abertura | A conferência acusou 32 OS concluídas antes de abrir, quando só 10 tinham sido injetadas. As outras 22 vinham de sortear a hora da abertura e a da conclusão de forma independente: preventiva realizada no mesmo dia podia abrir às 22h e concluir às 6h. Corrigido somando atraso e duração à abertura. Sujeira que ninguém escolheu injetar é sujeira que o README descreveria errado. |
 
+### A camada bronze
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Tipo das colunas | Tudo `text` | Rejeitado tipar na carga. Se o loader convertesse, a sujeira plantada pelo gerador explodiria dentro do Python em vez de chegar na bronze para o teste do dbt encontrar, e o projeto teria movido a validação de volta para onde ele promete tirá-la. Tipagem é da silver, em SQL. |
+| Nomes de coluna | Preservados como vieram, inclusive `"Air temperature [K]"` | Feio de consultar, e de propósito. A Semana 2 do plano define renome como trabalho da staging. Normalizar aqui seria resolver em Python o que o projeto se propõe a resolver em dbt, e ninguém veria o `select ... as temperatura_ar_k` que é justamente o que se quer mostrar. |
+| Encoding na leitura do cabeçalho | `utf-8-sig` | O CSV do UCI começa com BOM (`EF BB BF`). Com `utf-8` puro esses bytes grudam no nome da primeira coluna, e a tabela nascia com uma coluna `"﻿UDI"`, invisível na tela e obrigatória em todo `select` da silver. Achado pela conferência de schema depois da primeira carga. Isso é consertar leitura de arquivo, não transformar dado: o conteúdo das linhas continua intocado. |
+| Colunas de rastreio | `_carregado_em` e `_arquivo_origem`, com `DEFAULT` no DDL | Com o default no SQL, o `COPY` não precisa fornecer esses valores e o arquivo entra exatamente como está, sem ninguém montar linha em Python. |
+| Recarga | `DROP TABLE ... CASCADE` e `CREATE` a cada execução | Rodar `uv run seed` duas vezes não dobra linha nenhuma. Rejeitado `TRUNCATE`: manteria a estrutura antiga quando o gerador ganhasse coluna nova. O `CASCADE` derruba as views que a silver tiver criado em cima, e o `dbt run` seguinte as reconstrói, que é o fluxo normal do projeto. |
+| Transação | Uma só para as sete tabelas | Ou a bronze inteira troca, ou nada troca. Bronze meio velha e meio nova daria resultado que ninguém consegue reproduzir depois. |
+| Leitura do arquivo na carga | `COPY` em blocos de 64 KB, direto do arquivo | Sem pandas no meio. O pandas está no gerador, que é onde ele ajuda; aqui ele só repassaria bytes, ao custo de carregar tudo na memória. Hoje são 522 KB e caberiam com folga, mas o dia em que a fonte crescer não deveria exigir reescrever o loader. |
+
 ### Achados da fonte que viraram decisão
 
 Detalhamento em [`fonte-ai4i.md`](fonte-ai4i.md).
