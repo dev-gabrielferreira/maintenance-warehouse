@@ -24,7 +24,12 @@ models:
     # sobre 10 mil linhas, o que e' barato, e em troca a silver nunca fica velha.
     staging:
       +materialized: view
+      # Vira o schema analytics_staging: o dbt cola o +schema no schema base do
+      # profiles.yml. Assim silver e gold nao se misturam no mesmo lugar, e a
+      # bronze continua sendo a unica que o dbt nao escreve.
+      +schema: staging
     # A gold e' table: o fato faz join com varias dimensoes, e quem consulta o star
     # quer resposta rapida. Aqui a materializacao se paga.
     marts:
       +materialized: table
+      +schema: marts

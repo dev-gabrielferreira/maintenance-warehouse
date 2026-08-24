@@ -1,0 +1,189 @@
+# A bronze declarada como fonte do dbt.
+#
+# Por que isto existe, se `select * from bronze.ativos` funcionaria igual: o dbt so'
+# sabe que um modelo depende da bronze se o modelo pedir por source(). Com o nome
+# cru, o lineage nasce com buraco e `dbt build --select +stg_ativos` nao enxerga a
+# origem. Aqui a fronteira entre "o que o loader escreve" e "o que o dbt le'" fica
+# declarada num lugar so'.
+#
+# Todo teste deste arquivo esta' em severity: warn, e isso e' proposital. O papel do
+# teste na fonte nao e' barrar o build, e' medir quanta sujeira chegou: a cada
+# `dbt build` a tela diz 200 duplicatas, 8 OS orfas de ativo, 5 de tecnico. Quem
+# barra sao os testes da staging, em error, que provam que a limpeza funcionou.
+# Os mesmos testes em dois lugares com severidades diferentes nao e' repeticao:
+# sao duas perguntas diferentes ("o que chegou?" e "o que sai daqui esta' limpo?").
+
+version: 2
+
+sources:
+  - name: bronze
+    schema: bronze
+    description: >
+      Camada bronze, escrita por seed/loader.py e nunca pelo dbt. Tudo entra como
+      text, com os nomes de coluna exatamente como vieram do arquivo de origem.
+      Toda tabela tem `_carregado_em` (timestamptz, default now()) e
+      `_arquivo_origem` (text), preenchidas por DEFAULT no DDL, para rastrear de
+      qual arquivo e de qual execucao a linha veio.
+
+    tables:
+      # --- a fonte publica -------------------------------------------------
+      - name: ai4i_leituras
+        description: >
+          AI4I 2020 (UCI, CC BY 4.0), 10.000 leituras, como o CSV veio. Nomes de
+          coluna com espaco, maiuscula e colchete: por isso todas as colunas deste
+          bloco precisam de `quote: true`, senao o Postgres rebaixa o identificador
+          para minusculo e nao acha a coluna. Renomear e' trabalho da staging.
+        columns:
+          - name: UDI
+            quote: true
+            description: Identificador sequencial da leitura, 1 a 10.000. Chave natural.
+            data_tests:
+              - unique:
+                  config:
+                    severity: warn
+              - not_null:
+                  config:
+                    severity: warn
+          - name: Product ID
+            quote: true
+            description: >
+              Identificador da peca produzida, nao do equipamento. Sao 10.000 valores
+              distintos em 10.000 linhas (ver docs/fonte-ai4i.md, achado 1). Vira
+              atributo degenerado no fato, nao dimensao.
+          - name: Type
+            quote: true
+            description: Qualidade da peca (L, M, H). Entra na regra fisica do OSF.
+          - name: Machine failure
+            quote: true
+            description: >
+              0/1. Discorda de "algum modo marcado" em 27 linhas. A bronze guarda as
+              duas colunas como vieram; escolher uma definicao e' assunto da gold.
+
+      # --- o mundo sintetico -----------------------------------------------
+      - name: leitura_contexto
+        description: >
+          Em qual maquina e em qual instante cada UDI aconteceu. Gerada com semente
+          fixa. Sao 10.200 linhas para 10.000 UDI: as 200 a mais sao duplicatas
+          injetadas de proposito, e e' o unique abaixo que as encontra.
+        columns:
+          - name: udi
+            description: FK para ai4i_leituras.UDI. Chave natural desta tabela.
+            data_tests:
+              - unique:
+                  config:
+                    severity: warn
+              - not_null:
+                  config:
+                    severity: warn
+          - name: codigo_ativo
+            description: FK para ativos.codigo_ativo.
+            data_tests:
+              - relationships:
+                  arguments:
+                    to: source('bronze', 'ativos')
+                    field: codigo_ativo
+                  config:
+                    severity: warn
+
+      - name: ativos
+        description: >
+          Parque de 80 maquinas. Cinco delas tem data_instalacao posterior a primeira
+          leitura, sujeira injetada: isso e' regra de negocio, e o teste singular que
+          a pega e' da Semana 3.
+        columns:
+          - name: codigo_ativo
+            description: Codigo natural da maquina, MAQ-001 a MAQ-080.
+            data_tests:
+              - unique:
+                  config:
+                    severity: warn
+              - not_null:
+                  config:
+                    severity: warn
+          - name: codigo_linha
+            description: FK para locais.codigo_linha.
+            data_tests:
+              - relationships:
+                  arguments:
+                    to: source('bronze', 'locais')
+                    field: codigo_linha
+                  config:
+                    severity: warn
+
+      - name: locais
+        description: 12 linhas de producao em 5 setores, uma planta so'.
+        columns:
+          - name: codigo_linha
+            description: Codigo natural da linha, no formato SET-Lnn.
+            data_tests:
+              - unique:
+                  config:
+                    severity: warn
+              - not_null:
+                  config:
+                    severity: warn
+
+      - name: tecnicos
+        description: Equipe sintetica de 12 tecnicos, com especialidade, turno e custo hora.
+        columns:
+          - name: matricula
+            description: Matricula do tecnico, TEC-001 a TEC-012.
+            data_tests:
+              - unique:
+                  config:
+                    severity: warn
+              - not_null:
+                  config:
+                    severity: warn
+
+      - name: ordens_servico
+        description: >
+          1.008 OS: 357 corretivas nascidas das falhas do AI4I e 651 preventivas por
+          plano. Campo vazio no CSV chega aqui como NULL, nao como string vazia, e e'
+          assim que as 651 preventivas ficam sem modo_falha e sem udi_origem.
+          Carrega quatro tipos de sujeira injetada: 8 orfas de ativo, 5 de tecnico,
+          10 com custo negativo e 10 com data de conclusao antes da abertura.
+        columns:
+          - name: numero_os
+            description: Numero da ordem, OS-00001 em diante. Chave natural.
+            data_tests:
+              - unique:
+                  config:
+                    severity: warn
+              - not_null:
+                  config:
+                    severity: warn
+          - name: codigo_ativo
+            description: FK para ativos.codigo_ativo. 8 linhas apontam para maquina inexistente.
+            data_tests:
+              - relationships:
+                  arguments:
+                    to: source('bronze', 'ativos')
+                    field: codigo_ativo
+                  config:
+                    severity: warn
+          - name: matricula_tecnico
+            description: FK para tecnicos.matricula. 5 linhas apontam para tecnico inexistente.
+            data_tests:
+              - relationships:
+                  arguments:
+                    to: source('bronze', 'tecnicos')
+                    field: matricula
+                  config:
+                    severity: warn
+
+      - name: mudancas_ativo
+        description: >
+          Log de eventos de mudanca de cadastro, no formato campo/valor_novo: 31
+          linhas de transferencia, reclassificacao e reforma. E' o insumo da SCD2 da
+          Semana 3, e nao e' estado atual: ver docs/modelo-dimensional.md.
+        columns:
+          - name: codigo_ativo
+            description: FK para ativos.codigo_ativo.
+            data_tests:
+              - relationships:
+                  arguments:
+                    to: source('bronze', 'ativos')
+                    field: codigo_ativo
+                  config:
+                    severity: warn
