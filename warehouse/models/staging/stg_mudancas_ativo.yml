@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: stg_mudancas_ativo
+    description: >
+      Log de mudanca de cadastro, 1:1 com a origem (31 linhas), em formato longo.
+      Grain: uma alteracao de um atributo de uma maquina numa data, ou seja
+      (codigo_ativo, data_mudanca, campo).
+
+      O grain composto nao esta' testado. Os quatro testes genericos nativos do dbt
+      cobrem coluna, nao combinacao, e o teste de chave composta vem do pacote
+      dbt_utils (unique_combination_of_columns). Trazer um pacote inteiro para um
+      teste so' e' decisao a tomar na Semana 3, quando a gold provavelmente vai
+      precisar de accepted_range e expression_is_true tambem. Hoje a combinacao e'
+      unica nas 31 linhas, conferido na mao.
+    columns:
+      - name: codigo_ativo
+        description: Maquina que mudou. 27 das 80 aparecem aqui.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_ativos')
+                field: codigo_ativo
+
+      - name: data_mudanca
+        description: >
+          A partir de quando o valor novo vale. Nunca no primeiro nem no ultimo mes
+          da janela observada, para que exista antes e depois para comparar.
+        data_tests:
+          - not_null
+
+      - name: campo
+        description: Qual atributo do cadastro mudou.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['codigo_linha', 'criticidade', 'estado']
+
+      - name: valor_novo
+        description: >
+          O valor que passa a valer. O dominio depende do campo, o que e' o custo de
+          guardar o log em formato longo: uma coluna so' carrega codigo de linha,
+          nivel de criticidade e estado. Em troca, incluir um atributo novo na SCD2
+          nao exige mudar o schema da tabela.
+        data_tests:
+          - not_null
+
+      - name: motivo
+        description: Por que mudou. 15 transferencias, 10 reclassificacoes, 6 reformas.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['transferencia', 'reclassificacao', 'reforma']

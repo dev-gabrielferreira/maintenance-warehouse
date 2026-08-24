@@ -1,0 +1,107 @@
+version: 2
+
+models:
+  - name: stg_ordens_servico
+    description: >
+      Ordens de servico, 1:1 com a origem (1.008 linhas). Grain: uma OS. Sao 357
+      corretivas nascidas das falhas do AI4I e 651 preventivas por plano de 90 dias.
+    columns:
+      - name: numero_os
+        description: Numero da ordem, OS-00001 em diante. Chave natural.
+        data_tests:
+          - unique
+          - not_null
+
+      - name: tipo_os
+        description: >
+          Corretiva nasce de falha, preventiva nasce de plano. E' o eixo da pergunta
+          de negocio "preventiva em dia reduz corretiva no trimestre seguinte".
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['corretiva', 'preventiva']
+
+      - name: modo_falha
+        description: >
+          Modo que explica a corretiva. Nulo nas 651 preventivas, e isso e' correto:
+          preventiva nao tem falha para explicar. INDETERMINADO cobre as 9 linhas em
+          que o AI4I declara falha e nao marca nenhum modo, que e' sujeira real da
+          fonte publica, nao injetada por nos.
+
+          Quando mais de um modo estava marcado, o gerador escolheu o de maior
+          duracao de reparo, porque e' ele que determina quanto tempo a maquina fica
+          parada. As 24 leituras com dois ou tres modos continuam com todos eles em
+          stg_ai4i_leituras: modelar o multiplo e' decisao da Semana 3.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['TWF', 'HDF', 'PWF', 'OSF', 'RNF', 'INDETERMINADO']
+
+      - name: codigo_ativo
+        description: >
+          Maquina atendida. FK para stg_ativos, com 8 linhas apontando para maquina
+          inexistente (MAQ-9xx).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_ativos')
+                field: codigo_ativo
+              config:
+                # Warn, e nao error, ate' a Semana 3. As 8 orfas tem custo real e
+                # nao vao ser descartadas; elas vao passar a apontar para o membro
+                # "desconhecido" da dim_ativo, e ai' este teste sobe para error.
+                # Severidade e' decisao de contrato, com prazo, nao botao de mudo.
+                severity: warn
+
+      - name: matricula_tecnico
+        description: >
+          Quem atendeu. FK para stg_tecnicos, com 5 linhas apontando para tecnico
+          inexistente (TEC-9xx). Mesmo tratamento das orfas de ativo.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_tecnicos')
+                field: matricula
+              config:
+                severity: warn
+
+      - name: udi_origem
+        description: >
+          Qual leitura gerou a corretiva. Nulo nas preventivas. Nao tem relationships
+          para stg_ai4i_leituras porque o teste generico do dbt trata nulo como
+          violacao quando a coluna e' opcional; a checagem certa e' um teste singular
+          com filtro de tipo_os, e ele entra na Semana 3.
+
+      - name: data_abertura
+        description: >
+          Quando a OS foi aberta. Em 10 linhas ela e' posterior a data_conclusao,
+          sujeira injetada: e' o erro de digitacao mais comum em sistema de
+          manutencao de verdade. Nao e' corrigida aqui.
+        data_tests:
+          - not_null
+
+      - name: data_conclusao
+        description: >
+          Quando a OS foi encerrada. Nula em 36 preventivas, que foram planejadas e
+          nao aconteceram. Nao ha' not_null aqui de proposito: o nulo e' a resposta,
+          nao a ausencia dela, e e' o que a pergunta de aderencia ao plano vai medir.
+
+      - name: duracao_horas
+        description: Horas de reparo. Zero nas 36 preventivas nao executadas.
+        data_tests:
+          - not_null
+
+      - name: custo_mao_obra
+        description: Duracao vezes o custo hora da especialidade do tecnico.
+        data_tests:
+          - not_null
+
+      - name: custo_pecas
+        description: >
+          Custo de material. Negativo em 10 linhas, sujeira injetada. Nao e' corrigido
+          aqui: o teste singular de "custo nao negativo" e' da Semana 3.
+        data_tests:
+          - not_null
