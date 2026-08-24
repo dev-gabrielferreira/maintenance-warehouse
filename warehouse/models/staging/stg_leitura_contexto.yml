@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: stg_leitura_contexto
+    description: >
+      Atribuicao sintetica de maquina e instante a cada leitura do AI4I. Grain: um
+      UDI. Deduplicado: 10.200 linhas na bronze viram 10.000 aqui.
+
+      Esta tabela e' a fronteira entre dado e suposicao do projeto. O AI4I nao tem
+      maquina nem timestamp; tudo o que esta' aqui foi inventado pelo gerador com
+      semente fixa, e por isso mora em tabela separada em vez de virar coluna
+      carimbada no CSV da fonte.
+    columns:
+      - name: udi
+        description: >
+          FK para stg_ai4i_leituras e chave natural desta tabela. O unique aqui e' o
+          teste central da semana: ele so' passa porque o dedup existe, e comentar o
+          filtro do modelo o faz acusar 200 duplicatas.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_ai4i_leituras')
+                field: udi
+
+      - name: codigo_ativo
+        description: >
+          Em qual maquina a leitura aconteceu. A distribuicao e' desbalanceada de
+          proposito (curva 1/rank), entre 32 e 933 leituras por maquina, porque
+          gargalo de chao de fabrica roda direto e o resto complementa.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_ativos')
+                field: codigo_ativo
+
+      - name: instante
+        description: >
+          Quando a leitura aconteceu. Os 10.000 ciclos foram distribuidos em 24 meses
+          de operacao, em ordem de UDI: leitura 1 e' a mais antiga.
+        data_tests:
+          - not_null
+
+      - name: turno
+        description: Turno em que o instante cai. Manha 6h, tarde 14h, noite 22h.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['manha', 'tarde', 'noite']
