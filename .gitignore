@@ -1,0 +1,20 @@
+# O dado bruto e o mundo sintetico sao reproduziveis: o download busca no UCI e o
+# gerador tem semente fixa. Versionar data/ seria guardar no git o que um comando refaz.
+data/
+
+# Credencial nenhuma entra aqui. O .env.example versionado mostra quais variaveis existem.
+.env
+
+.venv/
+__pycache__/
+*.pyc
+
+# Artefatos do dbt. target/ e' compilado a cada run, dbt_packages/ vem do dbt deps,
+# e logs/ cresce sem fim. Os tres se refazem sozinhos.
+target/
+dbt_packages/
+logs/
+.user.yml
+
+# lixo que o Windows cria ao copiar arquivo para dentro do WSL
+*:Zone.Identifier
