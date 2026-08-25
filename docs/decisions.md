@@ -391,6 +391,43 @@ São exatamente as 9 leituras que a fonte declara como falha sem marcar modo nen
 o inner join elas sumiriam do fato, o total cairia de 382 para 373, e nenhum erro
 apareceria: só um número menor que ninguém tem com o que comparar.
 
+### fct_ordens_servico, e uma promessa da Semana 2 corrigida
+
+**A correção primeiro.** A Semana 2 registrou, sobre as 13 OS órfãs, que "na Semana 3
+elas passam a apontar para o membro desconhecido da dimensão e o teste sobe para
+`error`". A primeira metade aconteceu. A segunda estava errada como escrita, e só ficou
+claro na implementação:
+
+O teste que estava em `warn` é o `relationships` da **staging**, e ele não pode subir
+para `error`. A staging é 1:1 com a origem, as 8 ordens continuam apontando para máquina
+que não existe, e subir a severidade lá só deixaria o build vermelho sem consertar nada.
+Quem sobe para `error` é o `relationships` **da gold**, que é um teste novo, sobre uma
+coluna nova (`ativo_sk`), e que passa porque o fato roteia as órfãs para o membro `-1`.
+
+O aviso da staging continua no lugar, e continua sendo a medição de quanta sujeira
+chegou. A diferença entre as duas camadas é o trabalho que a gold fez, medido em vez de
+afirmado, do mesmo jeito que a Semana 2 mediu o trabalho da silver.
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Versão do ativo resolvida por qual data | Pela **abertura** da ordem | Não pela conclusão e não pelo cadastro de hoje. Ordem aberta antes de uma reforma pertence à máquina como ela era antes, e é isso que permite comparar custo antes e depois. Pela conclusão, uma ordem aberta antes e fechada depois da reforma migraria de versão e a comparação perderia o caso mais interessante. |
+| `dim_tempo` em dois papéis | `tempo_sk_abertura` e `tempo_sk_conclusao` | Role-playing: a mesma tabela cumprindo dois papéis no mesmo fato. Rejeitado criar uma `dim_data_conclusao` separada: seria a mesma tabela duplicada, com dois lugares para corrigir quando um atributo mudasse. |
+| As 36 preventivas sem conclusão | `tempo_sk_conclusao = -1` | O nulo ali é a resposta, não a ausência dela: elas foram planejadas e não aconteceram, e isso é metade da pergunta sobre aderência ao plano. Com FK nula, exatamente essas 36 sumiriam de qualquer join com `dim_tempo`, que são as linhas que mais importam naquela pergunta. |
+| Datas mantidas no fato além das FKs | Sim | `data_abertura` e `data_conclusao` continuam como timestamp ao lado das chaves, porque a diferença entre elas é medida em horas e uma dimensão de grain diário não responde isso. Redundância deliberada, e barata. |
+| Caminho do local para a ordem órfã | `coalesce(codigo_linha, 'DESCONHECIDO')` antes do join | É o que faz a ordem sem ativo cair também no local desconhecido pelo mesmo caminho, em vez de cada fato tratar o caso à mão. Conferido: as 8 órfãs de ativo são exatamente as 8 com `local_sk = -1`. |
+
+**A prova do limiar conhecido.** Com o limiar em `>8`, as 8 órfãs pintam amarelo e o
+build passa. Baixando para `>7`, que simula uma nona órfã aparecendo:
+
+```
+  Got 8 results, configured to fail if >7
+Done. PASS=21 WARN=1 ERROR=1 SKIP=0 NO-OP=0 REUSED=0 TOTAL=23
+```
+
+O teste deixa de perguntar "existe problema?" e passa a perguntar "o problema cresceu?".
+É a diferença entre um aviso que todo mundo aprende a ignorar e um contrato com a linha
+de base escrita dentro dele.
+
 ## Pendentes
 
 As cinco decisões que este bloco listava foram todas fechadas na seção da Semana 3

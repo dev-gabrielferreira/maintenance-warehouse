@@ -1,0 +1,133 @@
+version: 2
+
+models:
+  - name: fct_ordens_servico
+    description: >
+      Ordens de servico. Grain: uma ordem. 1.008 linhas, 357 corretivas e 651
+      preventivas.
+
+      Nao responde quais pecas foram trocadas (custo_pecas e' um valor so', sem item),
+      nem quantos tecnicos atenderam (ha' uma matricula por ordem), nem nada depois do
+      encerramento, porque nao existe reabertura.
+
+      dim_tempo aparece duas vezes, como abertura e como conclusao: e' dimensao
+      role-playing.
+    columns:
+      - name: numero_os
+        description: Codigo da ordem. Degenerado, unico por linha.
+        data_tests:
+          - unique
+          - not_null
+      - name: ativo_sk
+        description: >
+          Versao do ativo vigente NA DATA DE ABERTURA. E' o que permite comparar custo
+          antes e depois de uma reforma, que e' a unica pergunta do projeto que nao
+          existe sem SCD2. As 8 ordens de maquina inexistente apontam para -1.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_ativo')
+                field: ativo_sk
+      - name: local_sk
+        description: Linha de producao da versao do ativo na abertura.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_local')
+                field: local_sk
+      - name: tecnico_sk
+        description: Quem executou. As 5 ordens de matricula inexistente apontam para -1.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tecnico')
+                field: tecnico_sk
+      - name: modo_falha_sk
+        description: >
+          Modo que motivou a corretiva. NAO_APLICA nas 651 preventivas, porque nao
+          houve falha. Nunca nulo.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_modo_falha')
+                field: modo_falha_sk
+      - name: tempo_sk_abertura
+        description: Dia em que a ordem foi aberta.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: tempo_sk
+      - name: tempo_sk_conclusao
+        description: >
+          Dia em que a ordem foi concluida. -1 nas 36 preventivas que nao foram
+          executadas: o nulo ali e' a resposta, nao a ausencia dela, e o membro
+          desconhecido e' o que impede essas 36 de sumirem de um join.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: tempo_sk
+      - name: tipo_os
+        description: Corretiva nasce de falha, preventiva nasce de plano.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['corretiva', 'preventiva']
+      - name: udi_origem
+        description: >
+          Leitura que motivou a corretiva. Nulo nas 651 preventivas, por construcao, e
+          por isso sem relationships generico: aquele teste trata nulo como violacao. A
+          checagem certa e' o teste singular assert_corretiva_vem_de_leitura_com_falha.
+      - name: data_abertura
+        description: Momento da abertura. Fica no fato alem da FK porque a diferenca
+          entre abertura e conclusao e' medida em horas, e dimensao de grain diario nao
+          responde isso.
+        data_tests:
+          - not_null
+      - name: data_conclusao
+        description: Momento da conclusao. Nulo nas 36 preventivas nao executadas.
+      - name: duracao_horas
+        description: Horas de parada. Zero nas nao executadas.
+        data_tests:
+          - not_null
+      - name: custo_mao_obra
+        description: Custo de mao de obra em reais.
+        data_tests:
+          - not_null
+      - name: custo_pecas
+        description: Custo de pecas em reais. Negativo em 10 ordens, que e' sujeira injetada.
+        data_tests:
+          - not_null
+      - name: custo_total
+        description: >
+          Mao de obra mais pecas. Nasce aqui, e nao na silver: a Semana 2 recusou a soma
+          na staging para ela ter uma versao canonica num lugar so'.
+        data_tests:
+          - not_null
+    data_tests:
+      # As 8 ordens sem ativo e as 5 sem tecnico sao conhecidas e auditadas. O limiar
+      # e' o padrao da decisao F: o numero conhecido pinta amarelo e o build passa, e
+      # uma unidade a mais pinta vermelho e barra. O teste deixa de perguntar "existe
+      # problema?" e passa a perguntar "o problema cresceu?".
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "ativo_sk <> -1"
+          config:
+            severity: error
+            error_if: ">8"
+            warn_if: ">0"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "tecnico_sk <> -1"
+          config:
+            severity: error
+            error_if: ">5"
+            warn_if: ">0"
