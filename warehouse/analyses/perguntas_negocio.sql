@@ -704,12 +704,21 @@ order by 1, 2 desc;
 -- falha neste dado porque nada no gerador liga uma coisa na outra, e isso esta'
 -- declarado nos limites do README.
 --
--- Repare que a normalizacao nao inverteu nenhuma conclusao, e ainda assim ela era
--- necessaria: a MAQ-005 sai de "0 corretivas antes, 6 depois", que parece um desastre,
--- para "R$ 0 por mes contra R$ 289 por mes", que e' a mesma direcao dita de forma
--- comparavel. E as tres maquinas com R$ 0 de um lado tem 69, 148 e 349 dias naquele
--- lado: com zero ou uma ordem, a taxa por mes anda muito, e isso precisa estar dito ao
--- lado da tabela em vez de virar conclusao.
+-- A NORMALIZACAO INVERTEU UMA DAS SEIS, e vale saber qual. A MAQ-008 gastou
+-- R$ 4.756,58 antes da reforma e R$ 2.308,89 depois: pelo total cru, o custo dela caiu
+-- pela metade, e a demonstracao_scd2.sql a lista assim. Por mes de vigencia ela vai de
+-- R$ 276,15 para R$ 324,88, ou seja, SUBIU 18%. As duas contas estao certas, e o que
+-- muda entre elas e' que o periodo depois da reforma tem 213 dias contra 517 do
+-- periodo anterior. Ela gastou menos dinheiro porque foi observada menos tempo.
+--
+-- E' por isso que a contagem muda de lugar para lugar neste projeto: a Semana 3 escreveu
+-- "duas sobem, duas descem e duas nao tem os dois lados", contando totais crus, e aqui
+-- sao tres e tres, contando taxa. Nenhuma das duas frases esta' errada, e as duas
+-- precisam dizer de que sao feitas.
+--
+-- As tres maquinas com R$ 0 de um lado tem 69, 148 e 349 dias naquele lado: com zero ou
+-- uma ordem, a taxa por mes anda muito, e isso precisa estar dito ao lado da tabela em
+-- vez de virar conclusao.
 --
 -- O QUE ESTA DEMONSTRADO, E E' O QUE IMPORTA. Nao e' que reforma reduz custo. E' que o
 -- warehouse SEPARA o antes do depois de uma mudanca de cadastro, com cada ordem de

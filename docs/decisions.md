@@ -526,13 +526,107 @@ Nenhum aviso sem dono.
 | Lineage no README | Mermaid escrito a partir do `manifest.json` | Rejeitado colar um print do `dbt docs`: imagem no repositório envelhece sem avisar e não aparece em diff. O mermaid renderiza direto no GitHub, saiu do grafo real e não de desenho de cabeça, e o `dbt docs serve` continua sendo o caminho para a versão navegável com documentação por coluna. |
 | Idioma do README | Inglês, como o `CLAUDE.md` manda | A versão em português entra na Semana 4, junto com as cinco perguntas de negócio e o texto de lançamento. |
 
+## Semana 4
+
+### Onde o consumo da gold mora
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Formato das cinco perguntas | Arquivo único, `warehouse/analyses/perguntas_negocio.sql` | É o que a seção 6 do `PLANO.md` desenha, e é o formato que o `demonstracao_scd2.sql` já usa: pergunta, SQL, resultado colado logo abaixo. Rejeitados cinco arquivos separados: cada um compilaria num artefato próprio e rodaria sozinho, o que é real, mas o README passaria a linkar cinco lugares e o fio que liga as respostas umas às outras se perderia. E ele existe: as perguntas 1, 2 e 3 terminam todas na mesma cadeia entre o tipo da peça e o OSF. |
+| Como cada resposta é verificada | O resultado colado é a saída literal do psql | Não é transcrição nem resumo. As 37 linhas de resultado do arquivo foram conferidas uma a uma contra a saída real por script, e não a olho. Número colado à mão envelhece calado, e um comentário que diz um valor enquanto a consulta devolve outro é pior que comentário nenhum. |
+
+### As definições que cada pergunta exigiu
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Unidade do MTBF | Dias de calendário | Rejeitado horas de máquina ligada, que é o MTBF de manutenção de verdade. Não é escolha: a fonte tem uma linha por ciclo e nenhuma duração de ciclo, então hora de operação não existe neste dado. A alternativa seria inventar uma duração por ciclo, e aí o MTBF mediria a suposição, não a máquina. A unidade fica escrita ao lado do número em toda resposta. |
+| Denominador da exposição no MTBF | Versão de máquina, não máquina | Cinco máquinas foram reclassificadas de criticidade, e cada versão contribui com o pedaço da janela em que esteve vigente. Com SCD1 elas iriam inteiras para a criticidade de hoje, e o passado delas entraria no balde errado. É a SCD2 fazendo falta numa pergunta que não é a de número 5. |
+| Denominador da pergunta 2 | Ciclo produzido, não número de máquinas | O parque tem carga desbalanceada de propósito, de 32 a 933 leituras por máquina. Contar máquina daria peso igual ao gargalo e ao equipamento que roda uma vez por semana, e a resposta viraria uma tabela de tamanho de setor com nome de custo. Com ciclo no denominador, a Usinagem sai de "quem mais gasta" para "quem está na média", e a Montagem aparece. |
+| Onde a hora parada é somada | `fct_ordens_servico`, nunca `fct_falhas` | Já estava escrito no `modelo-dimensional.md` e agora tem consequência visível: aqui o HDF tem 109 ordens e no `fct_falhas` tem 115 ocorrências. Os dois números estão certos. As 24 leituras multimodo geram uma ordem só, atribuída ao modo de maior duração de reparo, e somar duração pelo fato sem medida contaria a mesma parada duas ou três vezes. |
+| O que é "preventiva em dia" | Três faixas: em dia, atrasada, não executada | Rejeitado o corte binário executada contra não executada: junta a preventiva feita no prazo com a feita 45 dias depois, e é justamente o atraso que deveria produzir corretiva. O fato não tem coluna de data planejada e não precisa ter, porque para preventiva a `data_abertura` é a data do plano: a ordem nasce quando o plano manda. O atraso sai de `(data_conclusao - data_abertura) - duracao_horas`, e a distribuição cai limpa em 0 a 7 dias, 14 a 60, e sem conclusão. Isso reproduz a janela de aderência do gerador sem ninguém ter contado a ela qual era, que é a melhor conferência possível de uma definição derivada. |
+| As 4 preventivas de atraso negativo | Faixa própria, e vencem qualquer desempate | São parte das 10 ordens com datas invertidas injetadas. Rejeitado descartá-las: sumiriam de uma resposta enquanto um teste do build continua contando-as, e as duas coisas passariam a discordar. Com faixa própria elas aparecem na saída com quatro pares, e ninguém precisa saber que existem para vê-las. |
+| Desempate dos 11 pares com duas preventivas no mesmo trimestre | A pior faixa vence | 625 pares têm uma preventiva e 11 têm duas. Quem fez uma no prazo e outra com 40 dias de atraso não aderiu ao plano, e a regra precisa estar escrita porque as duas escolhas são defensáveis e só uma delas é a mesma em toda execução. |
+| Normalização da pergunta 5 | Custo por mês de vigência | A `demonstracao_scd2.sql` da Semana 3 compara totais crus, e aquilo bastava para provar que os dois períodos existem separados. Para comparar os dois lados não basta: a `MAQ-017` tem 661 dias antes da reforma e 69 depois, e a `MAQ-005` tem 148 antes e 582 depois. Comparar os totais é comparar um ano com dois meses. |
+
+### A regra do código natural, invertida de propósito
+
+O projeto inteiro repete que fato não casa com dimensão pelo código natural. A pergunta 4
+faz exatamente isso, e o motivo precisa estar escrito, porque quem ler o arquivo vai
+estranhar com razão.
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Agrupamento da série por máquina na pergunta 4 | Pelo `codigo_ativo` | A série acompanha a mesma **máquina física** ao longo de oito trimestres, e uma máquina que trocou de cadastro no meio tem `ativo_sk` diferente antes e depois. Não é o mesmo caso do erro de join: lá o código natural casava uma linha de fato com várias versões e multiplicava o valor; aqui a chave já foi resolvida na construção do fato, e o código natural só está costurando de volta as versões da mesma máquina, que é para isso que ele continua na dimensão. |
+| O custo do outro caminho | Medido, não afirmado | Casar a série pela surrogate perde 12 pares e 22 corretivas, de 318 para 296. Sete por cento das corretivas sumiriam da resposta, sem erro nenhum aparecer, exatamente nas máquinas que mudaram de cadastro no período. É o mesmo tipo de defeito que a Semana 3 mediu no sentido contrário, quando o join errado inflou 10.000 leituras para 14.329: nos dois casos o número sai errado com toda a confiança do mundo. |
+
+### O achado da semana: o eixo de tempo herda a ordem do arquivo
+
+Apareceu ao montar a pergunta 4, e é o tipo de coisa que só aparece quando alguém corta
+o resultado em vez de olhar o agregado.
+
+O 4º trimestre de 2024 tem **146 corretivas contra cerca de 30 em cada um dos outros
+sete**, e 11,56% de taxa de falha contra uma linha de base de ~2,5%. Não há nada de
+especial naquele trimestre: o gerador atribui os instantes em ordem estrita de UDI, a
+correlação entre `udi` e `instante` é 1,0000, e o AI4I concentra 134 falhas entre os UDI
+4000 e 4999. Aquele bloco do arquivo cai inteiro naqueles três meses.
+
+Toda tendência temporal deste warehouse carrega junto a ordem das linhas de um CSV.
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| O que fazer com o viés | Documentar e mostrar o efeito dentro da resposta | A pergunta 4 sai com a média de todos os pares e a média sem o par contaminado, lado a lado, mais a tabela aberta por trimestre. Quem lê vê o viés em vez de recebê-lo diluído numa média. Rejeitado só documentar em nota de rodapé e responder agregado: a resposta agregada é justamente a que o viés inverte. |
+| Embaralhar a atribuição UDI para instante no gerador | Rejeitado | Uma permutação seedada espalharia o bloco de falhas pelos dois anos e o eixo de tempo ficaria crível. O custo é recalcular a bronze para baixo e revisar cada número já publicado no `decisions.md`, no README e na demonstração da SCD2, na última semana do projeto. E há um motivo melhor que o custo: a propriedade é real e vale mais documentada do que escondida. Um dado sintético que parece bom demais ensina menos que um que declara onde entorta. |
+
+### O que as respostas dizem, e o que elas não dizem
+
+As três primeiras perguntas caem todas na mesma cadeia, e ela não tem nada a ver com
+manutenção.
+
+O AI4I faz o limite do OSF depender do tipo da peça, então máquina tipo L falha mais:
+4,12% contra 2,49% da H, e 87 das 98 ocorrências de OSF são em L. O OSF é o reparo mais
+caro do parque, R$ 2.967,64 de peça em média contra R$ 643,26 do HDF. Daí saem três
+respostas:
+
+| Pergunta | O número | O que ele realmente mede |
+|---|---|---|
+| 1, MTBF por criticidade | Criticidade alta tem MTBF de 184,6 dias contra 146,5 da baixa | Não é que máquina crítica seja mais bem cuidada. O gerador sorteia a criticidade **a partir do tipo** da máquina (H nasce "alta" em 75% dos casos, L nasce "baixa" em 45%), então "alta" concentra H e M, que a regra física da fonte poupa. O MTBF por criticidade está medindo tipo de peça com outro nome. |
+| 2, custo por setor | Montagem custa R$ 84.039 por mil ciclos e Acabamento R$ 46.090, 82% de diferença | Não é gestão. Montagem tem 72,4% dos ciclos em máquina tipo L e Acabamento tem 24,5%. O gerador espalhou as máquinas pelas linhas com `rng.choice`, sem olhar tipo nem setor. |
+| 3, modo que mais para máquina | Os dois ranqueamentos são quase inversos: HDF é 30,5% das ordens e 19,4% das horas, OSF é 26,6% das ordens e 40,0% das horas | Este é de verdade, e é de manutenção. HDF e PWF resolvem dentro do turno porque são limpeza e reset; OSF e TWF param a máquina por 9 e 11 horas porque envolvem trocar componente. Está escrito na descrição de engenharia da `dim_modo_falha` e o dado reproduz. |
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| A resposta da pergunta 4 | **Não**, preventiva em dia não reduz corretiva no trimestre seguinte | O agregado dizia que sim, em ordem perfeita: 0,540 corretiva depois para quem fez em dia, 0,661 para quem atrasou, 0,758 para quem não fez. Tirando o par de trimestres contaminado, a ordem quebra e quem não fez a preventiva passa a ter a menor taxa (0,231 contra 0,350). E não poderia ser sim: o gerador deriva as corretivas das falhas do AI4I por UDI e as preventivas de um plano fixo de 90 dias, e os dois nunca se olham. Rejeitado publicar o número agregado, que era verdadeiro e teria virado "preventiva em dia reduz corretiva em 29%". |
+| Como se sabe que a quebra não é ruído | Pela estabilidade da faixa grande | A coluna "em dia" tem 457 pares e vale 0,348, 0,349, 0,391, 0,324, 0,369 e 0,324 nos seis trimestres limpos. As outras duas faixas têm 62 e 33 pares no total, uns 9 e uns 5 por trimestre, e pulam de 0,000 a 1,143. Amostra pequena anda sozinha, e a amostra grande não andou. |
+| A resposta da pergunta 5 | Que a pergunta **pode ser feita** | Mesma conclusão da demonstração da Semana 3, agora para o parque: por custo por mês de vigência, três máquinas sobem e três descem. O gerador distribui falha por carga de uso e não por estado do equipamento, então não há padrão para achar. O que está demonstrado é que o warehouse separa o antes do depois com cada ordem atribuída à versão que valia no dia em que ela abriu. |
+
+### A normalização que inverteu uma linha
+
+Vale como registro de que denominador não é detalhe de apresentação.
+
+A `MAQ-008` gastou R$ 4.756,58 em corretiva antes da reforma e R$ 2.308,89 depois. Pelo
+total cru o custo dela caiu pela metade, e é assim que a `demonstracao_scd2.sql` a
+lista. Por mês de vigência ela vai de R$ 276,15 para R$ 324,88, ou seja, **subiu 18%**.
+
+As duas contas estão certas. O que muda entre elas é que o período depois da reforma tem
+213 dias contra 517 do anterior: a máquina gastou menos dinheiro porque foi observada
+menos tempo.
+
+É por isso que a contagem muda de lugar para lugar neste projeto. A Semana 3 escreveu
+"duas sobem, duas descem e duas não têm os dois lados", contando totais crus, e a
+pergunta 5 diz três e três, contando taxa. Nenhuma das duas frases está errada, e as
+duas precisam dizer de que são feitas. Quando não dizem, uma contradiz a outra dentro do
+mesmo repositório e quem lê não tem como saber qual vale.
+
 ## Pendentes
 
-As cinco decisões que este bloco listava foram todas fechadas na seção da Semana 3
-acima. O que sobra é da Semana 4.
+As cinco perguntas de negócio estão respondidas, e com elas cai o item que era o
+critério de aceite do projeto. O que sobra da Semana 4:
 
-| Assunto | Quando | O que está em jogo |
+| Assunto | Situação | O que está em jogo |
 |---|---|---|
-| As 5 perguntas de negócio em SQL comentado | Semana 4 | São o consumo da gold e o critério de aceite do projeto. A de número 5, custo por máquina depois da reforma, é a que só existe com SCD2. |
-| A falha real do projeto, documentada | Semana 4 | O padrão da trilha pede um erro de verdade contado por inteiro. O candidato mais forte, vindo da Semana 3, é o **8,6 que não era igual a 8,6**: um teste que falhou por 12 linhas, uma "correção" que criou 15 do outro lado, e a causa sendo ponto flutuante binário na origem contra decimal exato no warehouse. Tem erro, tem correção errada no meio, e tem o porquê. Outros candidatos: as 22 OS concluídas antes de abrir que ninguém injetou, achadas na Semana 1, e o `[tool.uv] env-file` que o uv ignora em silêncio. |
-| Metabase lendo a gold | Semana 4, opcional | É o corte previsto se a semana estourar. Nunca as perguntas. |
+| A falha real do projeto, documentada | Escolhida, falta escrever | Vai para o README como seção narrada: o **8,6 que não era igual a 8,6** como história principal, e o **erro de um a menos na SCD2** logo depois, curta. A primeira tem erro, correção errada no meio e causa; a segunda é o caso em que nada ficou vermelho e a única pista foi um número numa conferência que só existia porque alguém decidiu conferir. |
+| README em português | Falta | `README.pt-BR.md`, como o P1 faz. O `README.md` promete essa versão desde a Semana 3 e o link precisa passar a existir. |
+| Limites novos no README | Falta | Dois entram: o eixo de tempo que herda a ordem do arquivo da fonte, e a cadeia entre tipo de peça, criticidade e custo por setor, que faz três das cinco respostas medirem a mesma coisa por caminhos diferentes. |
+| A verificação a partir de um banco vazio | Falta | O critério de aceite diz "clone, `docker compose up`, `uv run seed`, `dbt build`, tudo verde em qualquer máquina", e ele nunca foi exercido com o volume derrubado. Enquanto não for, é promessa. |
+| Metabase lendo a gold | Opcional, por último | Continua sendo o corte previsto se a semana estourar. Nunca as perguntas. |
+
