@@ -1,0 +1,84 @@
+-- EXERCICIO DE REESCRITA (Semana 3)
+--
+-- Reescreva do zero, aqui, a chave da dim_ativo e o join do fato com a versao certa.
+-- Sem abrir warehouse/models/marts/dim_ativo.sql nem fct_leituras.sql. Depois eu
+-- comparo os dois e aponto o que divergiu.
+--
+-- Este arquivo esta' fora de warehouse/models/ de proposito: o dbt nao o enxerga, entao
+-- ele nao entra no build e nao conflita com os modelos de verdade.
+--
+-- ===========================================================================
+-- O QUE VOCE TEM
+-- ===========================================================================
+--
+-- snap_ativo, em analytics_snapshots, 111 linhas. E' o que o laco de
+-- scripts/historico_ativo.sh construiu. Colunas:
+--
+--   codigo_ativo      MAQ-001 a MAQ-080
+--   tipo              L M ou H
+--   fabricante        texto
+--   codigo_linha      linha de producao NESTA versao
+--   criticidade       alta media ou baixa NESTA versao
+--   estado            operando ou reformado NESTA versao
+--   data_instalacao   date, igual em todas as versoes da mesma maquina
+--   atualizado_em     timestamp, data da ultima mudanca aplicada
+--   dbt_valid_from    timestamp, quando esta versao passou a valer
+--   dbt_valid_to      timestamp, quando ela deixou de valer. NULO na vigente
+--   dbt_scd_id        hash que o dbt usa internamente
+--
+-- Sao 80 maquinas. 53 tem uma versao so'. A MAQ-066 tem quatro.
+--
+-- stg_leitura_contexto, 10.000 linhas: udi, codigo_ativo, instante, turno.
+--
+-- ===========================================================================
+-- PARTE 1: A DIMENSAO
+-- ===========================================================================
+--
+-- Escreva dim_ativo. Ela precisa de:
+--
+--   1. Uma surrogate key inteira, uma por VERSAO e nao uma por maquina.
+--   2. O codigo natural preservado como atributo.
+--   3. Um intervalo de vigencia utilizavel por quem consulta.
+--   4. Uma flag dizendo qual e' a versao vigente.
+--   5. O membro desconhecido, para as 8 OS de maquina inexistente.
+--
+-- ===========================================================================
+-- PARTE 2: O JOIN DO FATO
+-- ===========================================================================
+--
+-- Escreva o trecho de fct_leituras que resolve ativo_sk e local_sk a partir de
+-- stg_leitura_contexto. O resultado tem que ter 10.000 linhas, nem uma a mais.
+--
+-- ===========================================================================
+-- AS SEIS PERGUNTAS QUE O EXERCICIO COBRA
+-- ===========================================================================
+--
+--   a) Existem 365 leituras com instante ANTERIOR a data_instalacao do proprio ativo,
+--      em 5 maquinas. Onde comeca a vigencia da primeira versao de cada maquina, e o
+--      que acontece com essas 365 leituras em cada uma das duas respostas possiveis?
+--
+--   b) O dbt entrega dbt_valid_to NULO na versao vigente. Voce mantem o nulo na
+--      dimensao ou troca por outra coisa? Escreva a condicao do join do fato nas duas
+--      hipoteses e compare o tamanho delas.
+--
+--   c) Uma leitura acontece exatamente no instante da mudanca de cadastro. Ela pertence
+--      a versao antiga ou a nova? As duas respostas sao defensaveis: qual das duas voce
+--      escolhe, e o que a outra provoca se ninguem declarar a escolha?
+--
+--   d) Se voce escrever o join usando so' `on c.codigo_ativo = a.codigo_ativo`, quantas
+--      linhas o fato passa a ter? Nao chute: escreva a consulta que responde, rode, e
+--      explique de onde vem a diferenca. Depois responda por que isso e' pior do que um
+--      erro de sintaxe.
+--
+--   e) A surrogate key sai de um row_number. Sobre qual ordenacao, e por que a
+--      ordenacao precisa ser deterministica? O que quebraria se ela nao fosse?
+--
+--   f) O membro desconhecido precisa de valido_de e valido_ate. Que valores voce poe
+--      neles, e por que essa escolha e' a unica que nao obriga o fato a tratar o caso a
+--      mao?
+--
+-- Escreva tambem os testes, do zero, incluindo o que prova que nao ha' sobreposicao de
+-- vigencia. Eles valem tanto quanto o SQL.
+--
+-- Comece abaixo desta linha.
+-- ---------------------------------------------------------------------------

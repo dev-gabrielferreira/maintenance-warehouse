@@ -517,6 +517,15 @@ gold: 8 ordens sem ativo, 5 sem técnico, 10 com conclusão antes da abertura, 1
 negativa, 8 com total negativo e 5 máquinas com instalação posterior à primeira leitura.
 Nenhum aviso sem dono.
 
+### O fechamento da semana
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Onde mora a demonstração da SCD2 | `warehouse/analyses/demonstracao_scd2.sql` | O dbt compila o que está em `analyses/` e não materializa nada, que é exatamente o que uma consulta para ler e discutir precisa. Rejeitado transformá-la em modelo: viraria uma tabela com o nome de uma máquina específica dentro da gold. |
+| O que a demonstração afirma | Que a pergunta **pode ser feita** | A `MAQ-060` custou R$ 4.849,95 em corretiva antes da reforma e R$ 579,71 depois, e seria fácil escrever que reforma reduz custo. Seria falso: das seis máquinas reformadas do parque, duas sobem, duas descem e duas não têm os dois lados. O gerador distribui falha por carga de uso e não por estado do equipamento, então não há padrão para achar. O que está demonstrado é que o warehouse separa o antes do depois com o custo atribuído à versão certa; com SCD1 as cinco corretivas apareceriam numa linha só, como "da máquina reformada", e o antes não ficaria errado, desapareceria. |
+| Lineage no README | Mermaid escrito a partir do `manifest.json` | Rejeitado colar um print do `dbt docs`: imagem no repositório envelhece sem avisar e não aparece em diff. O mermaid renderiza direto no GitHub, saiu do grafo real e não de desenho de cabeça, e o `dbt docs serve` continua sendo o caminho para a versão navegável com documentação por coluna. |
+| Idioma do README | Inglês, como o `CLAUDE.md` manda | A versão em português entra na Semana 4, junto com as cinco perguntas de negócio e o texto de lançamento. |
+
 ## Pendentes
 
 As cinco decisões que este bloco listava foram todas fechadas na seção da Semana 3
