@@ -131,3 +131,49 @@ models:
             severity: error
             error_if: ">5"
             warn_if: ">0"
+
+      # REGRAS DE NEGOCIO.
+      #
+      # As tres primeiras encontram sujeira injetada de proposito pelo gerador, e por
+      # isso carregam limiar. O numero de cada uma foi conferido no banco, e nao
+      # escrito de cabeca. Rodar `uv run seed --sem-sujeira` leva todos eles a zero.
+
+      # Ordem nao se conclui antes de abrir. Sao 10 datas invertidas injetadas. O
+      # `data_conclusao is null` na frente e' explicito de proposito: as 36 preventivas
+      # nao executadas nao sao violacao, e um teste que as pegasse estaria errado sobre
+      # o negocio, nao sobre o dado.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "data_conclusao is null or data_conclusao >= data_abertura"
+          config:
+            severity: error
+            error_if: ">10"
+            warn_if: ">0"
+
+      # Peca nao custa negativo. Sao 10 injetadas.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "custo_pecas >= 0"
+          config:
+            severity: error
+            error_if: ">10"
+            warn_if: ">0"
+
+      # O custo total fica negativo em 8 das 10 acima, porque a peca negativa arrasta a
+      # soma. Limiar proprio, porque e' consequencia da mesma sujeira e nao um segundo
+      # problema: se ele subir sozinho, alguma outra coisa quebrou.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "custo_total >= 0"
+          config:
+            severity: error
+            error_if: ">8"
+            warn_if: ">0"
+
+      # Estas duas nao tem limiar: hoje sao zero, e qualquer linha e' problema novo.
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "custo_mao_obra >= 0"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "duracao_horas >= 0"

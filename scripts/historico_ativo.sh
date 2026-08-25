@@ -22,6 +22,17 @@ cd "$raiz"
 
 dbt_() { uv run --env-file .env dbt "$@" --project-dir warehouse --profiles-dir warehouse; }
 
+# O loader recarrega a bronze com DROP TABLE ... CASCADE, e o CASCADE leva junto as
+# views da silver construidas em cima dela. A Semana 1 registrou isso com a nota de que
+# "o dbt run seguinte as reconstroi, que e' o fluxo normal do projeto" -- e era, ate'
+# este laco passar a rodar ENTRE o seed e o build. O snapshot le' stg_ativos e
+# stg_mudancas_ativo, que naquele momento nao existem.
+#
+# Reconstruir as duas aqui custa dois selects sobre tabelas pequenas e deixa o script
+# funcionando logo depois de `uv run seed`, que e' quando ele precisa funcionar.
+echo "==> reconstruindo as views da silver de que o snapshot depende"
+dbt_ run --select stg_ativos stg_mudancas_ativo | grep -E 'OK created|Done\.' || true
+
 echo "==> lendo as datas de corte"
 # Sao as 31 datas de mudanca mais uma: o dia anterior a primeira delas, que grava a
 # linha de base. Sem ela a maquina que muda na primeira data nasce ja' alterada.

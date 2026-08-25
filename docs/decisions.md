@@ -428,6 +428,95 @@ O teste deixa de perguntar "existe problema?" e passa a perguntar "o problema cr
 É a diferença entre um aviso que todo mundo aprende a ignorar e um contrato com a linha
 de base escrita dentro dele.
 
+### As regras de negocio, e o dia em que 8,6 nao foi igual a 8,6
+
+**O achado do bloco, e o melhor candidato a "falha real documentada" da Semana 4.**
+
+As regras físicas do AI4I foram conferidas à mão na Semana 1 e registradas em
+`fonte-ai4i.md`: HDF 115 de 115, OSF 98 de 98, PWF 95 de 95. A Semana 3 transformou
+aquela conferência em teste do build. Ele falhou, com 12 linhas, todas HDF marcado na
+fonte e a regra dizendo que não. As 12 tinham diferença de temperatura de **exatamente
+8,6**, e a regra do dataset é "abaixo de 8,6".
+
+A primeira correção foi trocar o `<` por `<=`. Ela consertou as 12 e criou 15 do outro
+lado: leituras com diferença de exatamente 8,6 que **não** são HDF. Nenhum limiar decimal
+separava as duas.
+
+A causa apareceu ao refazer a conta em ponto flutuante:
+
+```
+309.4 - 300.8 = 8.599999999999966   abaixo de 8.6  → é HDF
+311.0 - 302.4 = 8.600000000000023   acima de 8.6   → não é HDF
+```
+
+As duas contas dão 8,6 cravado em decimal exato, e mesmo assim uma é HDF e a outra não.
+O AI4I gerou o rótulo em ponto flutuante binário, onde o erro muda de direção conforme o
+par de números. A silver converte para `numeric`, que é decimal exato, e ali a diferença
+entre os dois casos simplesmente **não existe**.
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Quem cede, a silver ou o teste | O teste | O `numeric` da silver está certo e não muda: medição e dinheiro pedem decimal exato, e trocar o tipo do warehouse inteiro para salvar uma comparação seria deixar a cauda balançar o cachorro. O teste passa a fazer o cast para `float8` na hora de reproduzir a regra, porque ele está conferindo o rótulo **da fonte** e precisa refazer a aritmética **da fonte**. O motivo está escrito dentro do teste, com os dois números, para ninguém "consertar" aquele cast depois. |
+| PWF e a `potencia_w` arredondada | Fica como está | Mesmo risco em tese: a potência é arredondada em duas casas e comparada com 3.500 e 9.000. Conferido: nenhuma leitura cai na borda, e a mais próxima está a 1,98 W de 9.000, muito longe do erro de 0,005 que o arredondamento pode introduzir. Registrado para quem mexer no arredondamento saber o que conferir. |
+| TWF e RNF fora do teste | Sim, com motivo | O TWF fica de fora porque a documentação do dataset descreve troca entre 200 e 240 minutos e o arquivo tem casos de 198 a 253: testar contra a regra publicada acusaria erro da documentação, não do warehouse. O RNF é ruído proposital, sem causa física, e não há regra para reproduzir. Célula vazia com motivo escrito é informação. |
+
+### A ordem de execucao que este bloco corrigiu
+
+O laço do snapshot falhou logo depois de um `uv run seed`, e o motivo estava
+documentado desde a Semana 1 sem ninguém perceber a consequência: o loader recarrega a
+bronze com `DROP TABLE ... CASCADE`, e o `CASCADE` leva junto as views da silver. A nota
+da Semana 1 dizia que "o `dbt run` seguinte as reconstrói, que é o fluxo normal do
+projeto", e era verdade até este laço passar a rodar **entre** o seed e o build.
+
+O `scripts/historico_ativo.sh` passou a reconstruir `stg_ativos` e `stg_mudancas_ativo`
+antes do laço. Custa dois selects sobre tabelas pequenas, e deixa o script funcionando
+no momento em que ele precisa funcionar. Rejeitado colocar mais um passo no README:
+script que depende de alguém lembrar de um passo anterior é script que vai falhar na
+máquina de quem clonar.
+
+### Os limiares, todos conferidos no banco antes de escritos
+
+| Regra | Onde | Limiar | O que é |
+|---|---|---|---|
+| Ordem aponta para máquina existente | `fct_ordens_servico` | 8 | órfãs de ativo injetadas |
+| Ordem aponta para técnico existente | `fct_ordens_servico` | 5 | órfãs de técnico injetadas |
+| Conclusão não precede abertura | `fct_ordens_servico` | 10 | datas invertidas injetadas |
+| Custo de peças não é negativo | `fct_ordens_servico` | 10 | custos negativos injetados |
+| Custo total não é negativo | `fct_ordens_servico` | 8 | consequência dos 10 acima: a peça negativa arrasta a soma em 8 deles |
+| Máquina não produz antes de instalada | singular | 5 | instalações futuras injetadas, no grain de máquina |
+| Custo de mão de obra não é negativo | `fct_ordens_servico` | 0 | hoje limpo, qualquer linha é problema novo |
+| Duração não é negativa | `fct_ordens_servico` | 0 | idem |
+| Corretiva aponta para leitura com falha | singular | 0 | **a prova da decisão B** |
+| Regras físicas reproduzem os modos | singular | 0 | HDF, OSF e PWF, nas duas direções |
+
+O limiar de instalação futura é 5 e não 365 de propósito: ele conta **máquinas** com
+cadastro errado, e não leituras afetadas. As 365 leituras variam com a distribuição de
+carga do gerador sem o problema ter mudado, e limiar que se mexe sozinho é limiar que
+vira ruído. Cinco máquinas com data errada continuam sendo cinco.
+
+### A prova de ponta a ponta
+
+Com `uv run seed --sem-sujeira`, seguido do laço do histórico e do build inteiro:
+
+```
+Done. PASS=240 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=240
+```
+
+Zero avisos em 240 nós. Todos os limiares foram a zero sozinhos, o que fecha o argumento
+nos dois sentidos: os avisos do build normal vêm da sujeira injetada, e não de modelo mal
+escrito que avisaria de qualquer jeito.
+
+Com a carga normal:
+
+```
+Done. PASS=229 WARN=11 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=240
+```
+
+Os 11 avisos são os 5 que a Semana 2 já registrava, na fonte e na staging, mais os 6 da
+gold: 8 ordens sem ativo, 5 sem técnico, 10 com conclusão antes da abertura, 10 com peça
+negativa, 8 com total negativo e 5 máquinas com instalação posterior à primeira leitura.
+Nenhum aviso sem dono.
+
 ## Pendentes
 
 As cinco decisões que este bloco listava foram todas fechadas na seção da Semana 3
@@ -436,5 +525,5 @@ acima. O que sobra é da Semana 4.
 | Assunto | Quando | O que está em jogo |
 |---|---|---|
 | As 5 perguntas de negócio em SQL comentado | Semana 4 | São o consumo da gold e o critério de aceite do projeto. A de número 5, custo por máquina depois da reforma, é a que só existe com SCD2. |
-| A falha real do projeto, documentada | Semana 4 | O padrão da trilha pede um erro de verdade contado por inteiro. Candidatos até aqui: as 22 OS concluídas antes de abrir que ninguém injetou, achadas pela conferência da Semana 1, e o `[tool.uv] env-file` que o uv ignora em silêncio. |
+| A falha real do projeto, documentada | Semana 4 | O padrão da trilha pede um erro de verdade contado por inteiro. O candidato mais forte, vindo da Semana 3, é o **8,6 que não era igual a 8,6**: um teste que falhou por 12 linhas, uma "correção" que criou 15 do outro lado, e a causa sendo ponto flutuante binário na origem contra decimal exato no warehouse. Tem erro, tem correção errada no meio, e tem o porquê. Outros candidatos: as 22 OS concluídas antes de abrir que ninguém injetou, achadas na Semana 1, e o `[tool.uv] env-file` que o uv ignora em silêncio. |
 | Metabase lendo a gold | Semana 4, opcional | É o corte previsto se a semana estourar. Nunca as perguntas. |
