@@ -376,3 +376,349 @@ order by horas_paradas desc;
 -- e' o ruido que o proprio AI4I injetou de proposito, sem causa fisica, e o gerador deu
 -- a ele 1 a 3 horas de "abre, confere e fecha sem achar nada". A dimensao carrega isso
 -- escrito, e a tabela concorda com o texto.
+
+
+-- ============================================================================
+-- PERGUNTA 4: preventiva em dia reduz corretiva no trimestre seguinte?
+-- ============================================================================
+--
+-- Esta e' a pergunta que mais precisa de definicao antes de virar SQL, e sao tres.
+--
+-- 1. O QUE E' "EM DIA", SEM COLUNA DE DATA PLANEJADA. O fato nao tem data de plano, e
+--    nao precisa ter: para preventiva, a data_abertura E' a data do plano, porque a
+--    ordem nasce quando o plano manda. O atraso e' entao a espera entre abrir e ficar
+--    pronta, descontado o tempo de reparo:
+--
+--        atraso = (data_conclusao - data_abertura) - duracao_horas
+--
+--    A distribuicao cai limpa em 0 a 7 dias, 14 a 60 dias, e sem conclusao. Isso
+--    reproduz a regra de aderencia do gerador sem ninguem ter contado a ela qual era,
+--    o que e' a melhor conferencia possivel de uma definicao derivada.
+--
+-- 2. QUAL FAIXA VALE QUANDO O TRIMESTRE TEM DUAS PREVENTIVAS. Sao 11 pares
+--    (maquina, trimestre) com duas ordens, contra 625 com uma. A pior faixa vence:
+--    quem fez uma no prazo e outra com 40 dias de atraso nao aderiu ao plano. As 4
+--    preventivas de atraso negativo, que sao a sujeira das datas invertidas, ganham
+--    faixa propria e vencem qualquer desempate, para nao se esconderem dentro de outra.
+--
+-- 3. POR QUE AQUI O AGRUPAMENTO E' PELO CODIGO NATURAL, e nao pela surrogate. O resto
+--    do projeto repete que fato nao casa com dimensao por codigo_ativo. Aqui a serie e'
+--    a mesma MAQUINA FISICA ao longo de oito trimestres, e uma maquina que trocou de
+--    versao no meio tem ativo_sk diferente antes e depois: agrupar pela surrogate
+--    partiria a serie dela em duas no meio da janela. Nao e' a mesma coisa que o erro
+--    de join: la' o codigo natural casava uma linha de fato com VARIAS versoes e
+--    multiplicava o valor; aqui a chave ja' esta' resolvida no fato, e o codigo natural
+--    so' esta' costurando de volta as versoes da mesma maquina, que e' para isso que
+--    ele existe na dimensao. Medido, em vez de afirmado: sao 636 pares, e casar a
+--    serie pela surrogate em vez do codigo natural perde 12 pares e 22 corretivas,
+--    de 318 para 296. Sete por cento das corretivas sumiriam da resposta, sem erro
+--    nenhum aparecer, e justamente nas maquinas que mudaram de cadastro no periodo.
+--
+-- As 8 ordens orfas de ativo ficam de fora, porque nao ha' maquina a que atribuir a
+-- serie. E' a unica pergunta do arquivo em que o desconhecido nao aparece na saida, e
+-- o motivo e' esse.
+
+with preventivas as (
+
+    select
+        a.codigo_ativo,
+        t.ano * 4 + t.trimestre  as tri,
+        t.ano,
+        t.trimestre,
+        case
+            when o.data_conclusao is null then 'nao executada'
+            when floor(extract(epoch from (o.data_conclusao - o.data_abertura)) / 86400.0
+                       - o.duracao_horas / 24.0) <  0 then 'data invertida'
+            when floor(extract(epoch from (o.data_conclusao - o.data_abertura)) / 86400.0
+                       - o.duracao_horas / 24.0) <= 7 then 'em dia'
+            else 'atrasada'
+        end as faixa
+
+    from {{ ref('fct_ordens_servico') }} o
+    join {{ ref('dim_ativo') }}  a using (ativo_sk)
+    join {{ ref('dim_tempo') }}  t on o.tempo_sk_abertura = t.tempo_sk
+    where o.tipo_os = 'preventiva'
+      and a.ativo_sk <> -1
+
+),
+
+aderencia as (
+
+    -- Uma linha por (maquina, trimestre), com a pior faixa do trimestre.
+    select distinct on (codigo_ativo, tri)
+        codigo_ativo, tri, ano, trimestre, faixa
+    from preventivas
+    order by
+        codigo_ativo, tri,
+        case faixa
+            when 'data invertida' then 4
+            when 'nao executada'  then 3
+            when 'atrasada'       then 2
+            else 1
+        end desc
+
+),
+
+corretivas as (
+
+    select
+        a.codigo_ativo,
+        t.ano * 4 + t.trimestre  as tri,
+        count(*)                 as n
+
+    from {{ ref('fct_ordens_servico') }} o
+    join {{ ref('dim_ativo') }}  a using (ativo_sk)
+    join {{ ref('dim_tempo') }}  t on o.tempo_sk_abertura = t.tempo_sk
+    where o.tipo_os = 'corretiva'
+      and a.ativo_sk <> -1
+    group by 1, 2
+
+),
+
+pares as (
+
+    -- O deslocamento de um trimestre. O left join com coalesce e' obrigatorio: trimestre
+    -- seguinte SEM corretiva nenhuma e' zero, e e' o caso que mais interessa a pergunta.
+    -- Com inner join essas maquinas sumiriam e a media subiria em todas as faixas.
+    select
+        ad.*,
+        coalesce(c.n, 0) as corretivas_seguinte
+
+    from aderencia ad
+    left join corretivas c
+      on  c.codigo_ativo = ad.codigo_ativo
+      and c.tri          = ad.tri + 1
+
+    -- O ultimo trimestre da janela nao tem seguinte, e vira par sem resposta possivel.
+    where ad.tri + 1 <= (select max(tri) from corretivas)
+
+)
+
+select
+    faixa,
+    count(*)                                as pares,
+    sum(corretivas_seguinte)                as corretivas_no_seguinte,
+    round(avg(corretivas_seguinte), 3)      as media,
+
+    -- As mesmas duas colunas, tirando os pares cujo trimestre seguinte e' 2024Q4. Ver a
+    -- leitura abaixo: aquele trimestre nao mede manutencao, mede a ordem das linhas do
+    -- arquivo do AI4I.
+    count(*) filter (where not (ano = 2024 and trimestre = 3))                   as pares_limpos,
+    round(avg(corretivas_seguinte) filter (where not (ano = 2024 and trimestre = 3)), 3) as media_limpa
+
+from pares
+group by 1
+order by media desc;
+
+-- RESULTADO:
+--
+--      faixa      | pares | corretivas_no_seguinte | media | pares_limpos | media_limpa
+-- ----------------+-------+------------------------+-------+--------------+-------------
+--  data invertida |     4 |                      5 | 1.250 |            2 |       1.500
+--  nao executada  |    33 |                     25 | 0.758 |           26 |       0.231
+--  atrasada       |    62 |                     41 | 0.661 |           52 |       0.500
+--  em dia         |   457 |                    247 | 0.540 |          397 |       0.350
+--
+-- ----------------------------------------------------------------------------
+-- A LEITURA, E ELA E' O CONTRARIO DO QUE A PRIMEIRA COLUNA SUGERE
+-- ----------------------------------------------------------------------------
+--
+-- A coluna "media" e' uma armadilha perfeita, porque ela sai na direcao que a pergunta
+-- espera, e em ordem: 0,540 corretiva no trimestre seguinte para quem fez a preventiva
+-- em dia, 0,661 para quem atrasou, 0,758 para quem nao fez. Escrito assim, vira "fazer
+-- preventiva em dia reduz corretiva em 29%", e o numero e' verdadeiro.
+--
+-- A coluna "media_limpa" desmancha isso. Tirando UM par de trimestres, a ordem quebra:
+-- quem NAO FEZ a preventiva passa a ter a MENOR taxa de corretiva depois (0,231),
+-- abaixo de quem fez em dia (0,350).
+--
+-- O par retirado e' 2024Q3 -> 2024Q4, e aqui esta' o porque, aberto por trimestre:
+--
+--   trimestre  | seguinte | pares | em dia | atrasada | nao exec | media geral
+--  ------------+----------+-------+--------+----------+----------+-------------
+--   2024Q1     | 2024Q2   |    80 |  0.348 |    1.143 |    0.286 |       0.413
+--   2024Q2     | 2024Q3   |    78 |  0.349 |    0.250 |    0.400 |       0.372
+--   2024Q3     | 2024Q4   |    79 |  1.800 |    1.500 |    2.714 |       1.823
+--   2024Q4     | 2025Q1   |    80 |  0.391 |    0.600 |    0.167 |       0.400
+--   2025Q1     | 2025Q2   |    80 |  0.324 |    0.143 |    0.000 |       0.300
+--   2025Q2     | 2025Q3   |    79 |  0.369 |    0.700 |    0.250 |       0.405
+--   2025Q3     | 2025Q4   |    80 |  0.324 |    0.200 |    0.000 |       0.300
+--
+-- Uma linha e' cinco vezes as outras, nas tres faixas ao mesmo tempo. Ela e' o achado
+-- que abre este arquivo: o gerador atribui os instantes em ordem estrita de UDI, o AI4I
+-- concentra 134 falhas entre os UDI 4000 e 4999, e esse bloco cai inteiro no 4o
+-- trimestre de 2024. Aquele trimestre tem 146 corretivas contra ~30 dos outros sete, e
+-- a razao nao tem nada a ver com manutencao: e' a ordem das linhas de um CSV.
+--
+-- Como a faixa "nao executada" tem 33 pares no total e 7 deles caem justamente ali,
+-- aquele unico trimestre carrega quase toda a diferenca que a coluna "media" mostrava.
+--
+-- ENTAO A RESPOSTA E' NAO: neste dado, preventiva em dia nao reduz corretiva no
+-- trimestre seguinte. E ela nao poderia reduzir, o que e' a parte que fecha o
+-- argumento. O gerador deriva as corretivas das falhas do AI4I, indexadas por UDI, e
+-- gera as preventivas de um plano fixo de 90 dias. Os dois nunca se olham. Nao existe
+-- mecanismo pelo qual uma preventiva atrasada cause uma falha aqui, entao qualquer
+-- gradiente que aparecesse teria que ser ruido ou contaminacao, e foi as duas coisas.
+--
+-- O que sustenta isso na tabela por trimestre e' a estabilidade da coluna "em dia":
+-- 0,348, 0,349, 0,391, 0,324, 0,369, 0,324 nos seis trimestres limpos. Ela tem 457
+-- pares e quase nao se move. As outras duas colunas pulam de 0,000 a 1,143 porque tem
+-- 62 e 33 pares no total, uns 9 e uns 5 por trimestre, e com essa amostra a media anda
+-- sozinha.
+--
+-- O VALOR DESTA PERGUNTA NAO E' A RESPOSTA, E' O CAMINHO. O warehouse formulou a
+-- pergunta certa, com a definicao de "em dia" derivada do dado, o deslocamento de
+-- trimestre montado e a serie por maquina costurada atraves das versoes da SCD2. O
+-- resultado agregado apontava para a resposta que se queria ouvir, e foi olhar o corte
+-- por trimestre que mostrou que ela vinha de um artefato da fonte. Num projeto de
+-- verdade e' exatamente esse o momento em que se ganha ou se perde a confianca no
+-- numero, e ele so' existe porque a resposta veio com o corte junto.
+
+
+-- ============================================================================
+-- PERGUNTA 5: o custo de manutencao muda depois da reforma?
+-- ============================================================================
+--
+-- E' a unica das cinco que NAO EXISTE sem SCD2, e por isso ela e' a razao de a SCD2
+-- estar no projeto. Sem historico, a maquina sempre esteve reformada, e o periodo
+-- anterior nao fica errado: ele desaparece.
+--
+-- O caso unico, com a comparacao lado a lado contra o que uma SCD1 responderia, esta'
+-- em analyses/demonstracao_scd2.sql, com a MAQ-060. Aqui a pergunta e' feita para o
+-- parque inteiro, e o que este arquivo acrescenta aquele e' o DENOMINADOR.
+--
+-- POR QUE O TOTAL CRU NAO SERVE. A demonstracao mostra o custo somado de cada periodo,
+-- e aquilo basta para provar que os dois periodos existem separados. Mas comparar os
+-- dois totais e' comparar um ano com dois meses: a MAQ-017 tem 661 dias antes da
+-- reforma e 69 depois, e a MAQ-005 tem 148 antes e 582 depois. "Zero antes, seis
+-- depois" na MAQ-005 nao quer dizer que a reforma piorou a maquina; quer dizer que o
+-- antes dela e' um quarto do depois.
+--
+-- Entao o custo sai por mes de vigencia, com o tempo de cada versao cortado pela janela
+-- observada, do mesmo jeito que a pergunta 1 fez com a exposicao.
+
+with janela as (
+
+    select min(instante) as inicio, max(instante) as fim
+    from {{ ref('fct_leituras') }}
+
+),
+
+reformadas as (
+
+    -- Uma maquina esta' aqui se ALGUMA versao dela chegou a 'reformado'. Sao 6 das 80.
+    select distinct codigo_ativo
+    from {{ ref('dim_ativo') }}
+    where estado = 'reformado'
+
+),
+
+versoes as (
+
+    -- O 'antes' pode ter mais de uma versao: maquina que foi transferida e depois
+    -- reformada tem duas versoes antes da reforma. Por isso o periodo agrega versoes,
+    -- em vez de assumir uma de cada lado.
+    select
+        a.codigo_ativo,
+        a.ativo_sk,
+        case when a.estado = 'reformado' then 'depois' else 'antes' end as periodo,
+        extract(epoch from (
+            least(a.valido_ate, j.fim) - greatest(a.valido_de, j.inicio)
+        )) / 86400.0 as dias
+
+    from {{ ref('dim_ativo') }} a
+    join reformadas r using (codigo_ativo)
+    cross join janela j
+    where greatest(a.valido_de, j.inicio) < least(a.valido_ate, j.fim)
+
+),
+
+ordens as (
+
+    -- A chave ja' esta' resolvida pela data de ABERTURA da ordem no fct_ordens_servico,
+    -- entao a ordem aberta antes da reforma pertence a versao antiga mesmo que tenha
+    -- sido concluida depois. E' a decisao registrada no proprio modelo, e e' ela que
+    -- faz esta pergunta ter resposta.
+    select
+        ativo_sk,
+        count(*)            as corretivas,
+        sum(custo_total)    as custo
+    from {{ ref('fct_ordens_servico') }}
+    where tipo_os = 'corretiva'
+    group by 1
+
+)
+
+select
+    v.codigo_ativo,
+    v.periodo,
+    round(sum(v.dias))                                          as dias,
+    coalesce(sum(o.corretivas), 0)                              as corretivas,
+    round(coalesce(sum(o.custo), 0), 2)                         as custo,
+
+    -- A coluna que torna os dois lados comparaveis.
+    round(coalesce(sum(o.custo), 0) * 30 / sum(v.dias), 2)      as custo_por_mes,
+
+    round(sum(v.dias) / nullif(sum(o.corretivas), 0), 0)        as dias_entre_corretivas
+
+from versoes v
+left join ordens o using (ativo_sk)
+group by 1, 2
+order by 1, 2 desc;
+
+-- RESULTADO:
+--
+--  codigo_ativo | periodo | dias | corretivas |  custo  | custo_por_mes | dias_entre_corretivas
+-- --------------+---------+------+------------+---------+---------------+-----------------------
+--  MAQ-005      | depois  |  582 |          6 | 5604.36 |        288.78 |                    97
+--  MAQ-005      | antes   |  148 |          0 |    0.00 |          0.00 |
+--  MAQ-008      | depois  |  213 |          1 | 2308.89 |        324.88 |                   213
+--  MAQ-008      | antes   |  517 |          1 | 4756.58 |        276.15 |                   517
+--  MAQ-017      | depois  |   69 |          0 |    0.00 |          0.00 |
+--  MAQ-017      | antes   |  661 |          3 | 3092.39 |        140.40 |                   220
+--  MAQ-025      | depois  |  349 |          0 |    0.00 |          0.00 |
+--  MAQ-025      | antes   |  381 |          2 | 4780.06 |        376.63 |                   190
+--  MAQ-060      | depois  |  240 |          1 |  579.71 |         72.40 |                   240
+--  MAQ-060      | antes   |  490 |          4 | 4849.95 |        297.09 |                   122
+--  MAQ-075      | depois  |  583 |          2 | 3328.29 |        171.21 |                   292
+--  MAQ-075      | antes   |  147 |          1 |  564.06 |        115.31 |                   147
+--
+-- Confere: os dois periodos de cada maquina somam 730 dias, que e' a janela observada
+-- inteira. Nenhum pedaco de vigencia se perdeu no caminho.
+--
+-- ----------------------------------------------------------------------------
+-- A LEITURA
+-- ----------------------------------------------------------------------------
+--
+-- Pelo custo por mes de vigencia, TRES SOBEM E TRES DESCEM:
+--
+--   MAQ-060   R$ 297 -> R$  72     desceu
+--   MAQ-025   R$ 377 -> R$   0     desceu
+--   MAQ-017   R$ 140 -> R$   0     desceu
+--   MAQ-075   R$ 115 -> R$ 171     subiu
+--   MAQ-008   R$ 276 -> R$ 325     subiu
+--   MAQ-005   R$   0 -> R$ 289     subiu
+--
+-- Nao ha' padrao, e nao deveria haver. O gerador distribui falha por CARGA DE USO,
+-- seguindo a curva 1/rank^0.8, e nunca olha o estado do equipamento. Reforma nao reduz
+-- falha neste dado porque nada no gerador liga uma coisa na outra, e isso esta'
+-- declarado nos limites do README.
+--
+-- Repare que a normalizacao nao inverteu nenhuma conclusao, e ainda assim ela era
+-- necessaria: a MAQ-005 sai de "0 corretivas antes, 6 depois", que parece um desastre,
+-- para "R$ 0 por mes contra R$ 289 por mes", que e' a mesma direcao dita de forma
+-- comparavel. E as tres maquinas com R$ 0 de um lado tem 69, 148 e 349 dias naquele
+-- lado: com zero ou uma ordem, a taxa por mes anda muito, e isso precisa estar dito ao
+-- lado da tabela em vez de virar conclusao.
+--
+-- O QUE ESTA DEMONSTRADO, E E' O QUE IMPORTA. Nao e' que reforma reduz custo. E' que o
+-- warehouse SEPARA o antes do depois de uma mudanca de cadastro, com cada ordem de
+-- servico atribuida a versao da maquina que estava valendo no dia em que ela abriu. Se
+-- o dado tivesse padrao, ele apareceria nesta tabela.
+--
+-- Com SCD1 esta consulta devolveria seis linhas em vez de doze, todas marcadas
+-- 'reformado', e o custo dos dois periodos somado numa so'. O numero nao ficaria
+-- errado: ele responderia outra pergunta, e ninguem notaria a troca. E' esse o custo
+-- real de nao guardar historico, e e' por isso que so' a dim_ativo e' SCD2 neste
+-- projeto: nenhuma das outras quatro perguntas precisa do passado, e esta nao existe
+-- sem ele.
