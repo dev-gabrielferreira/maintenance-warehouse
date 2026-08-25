@@ -1,0 +1,81 @@
+version: 2
+
+models:
+  - name: fct_falhas
+    description: >
+      Modos de falha observados. Grain: um modo de falha de uma leitura. 382 linhas
+      para 357 leituras, porque 23 leituras tem dois modos marcados e 1 tem tres.
+
+      Fato sem medida: nao ha' coluna para somar, a medida e' a contagem de linhas.
+      Duracao e custo nao entram aqui de proposito, porque vivem na ordem de servico,
+      que tem um modo so'; soma-los por modo aqui contaria a mesma parada duas vezes
+      nas 24 leituras multimodo.
+
+      As contagens por modo reproduzem as do docs/fonte-ai4i.md: HDF 115, OSF 98,
+      PWF 95, TWF 46, RNF 19, mais 9 INDETERMINADO.
+    columns:
+      - name: ativo_sk
+        description: Versao do ativo vigente no instante da falha. Herdada de fct_leituras.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_ativo')
+                field: ativo_sk
+      - name: local_sk
+        description: >
+          Linha de producao da versao do ativo. Existe aqui para "falhas por setor" ser
+          um join so', sem passar por fct_leituras.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_local')
+                field: local_sk
+      - name: tempo_sk
+        description: Dia da falha.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_tempo')
+                field: tempo_sk
+      - name: turno_sk
+        description: Turno em que a falha aconteceu.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_turno')
+                field: turno_sk
+      - name: modo_falha_sk
+        description: >
+          O modo. INDETERMINADO nas 9 leituras que a fonte declara como falha sem
+          marcar causa. NAO_APLICA nunca aparece aqui, e ha' teste cobrando isso.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_modo_falha')
+                field: modo_falha_sk
+      - name: udi
+        description: >
+          Leitura de origem. Degenerado, e NAO e' unico aqui: o grain e' o par
+          (udi, modo).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_leituras')
+                field: udi
+      - name: instante
+        description: Momento da leitura que falhou.
+        data_tests:
+          - not_null
+    data_tests:
+      # O grain, provado. Sem isto, "382 linhas para 357 leituras" seria afirmacao.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - udi
+              - modo_falha_sk

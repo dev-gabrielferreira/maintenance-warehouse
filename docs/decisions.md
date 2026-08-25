@@ -355,6 +355,42 @@ porque quem lê o relatório conclui que a máquina gastou muito, e não que a c
 errada. É por isso que a chave é resolvida na construção do fato, e não deixada para
 quem consulta.
 
+### fct_falhas, o fato sem medida
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| De onde `fct_falhas` lê as chaves | De `fct_leituras`, não da staging | A resolução da versão do ativo pela data já aconteceu lá. Refazer aquele join aqui criaria duas cópias da mesma lógica, e duas cópias divergem um dia sem ninguém ver. Lendo o fato pronto, a mesma leitura tem obrigatoriamente a mesma versão de ativo nos dois fatos. Isso é diferente de **consumir** um fato através do outro: `fct_falhas` carrega as próprias FKs, e "falhas por setor" é um join só. |
+| Medidas em `fct_falhas` | Nenhuma | Fato sem medida, o factless fact table do Kimball: a medida é a contagem de linhas. Rejeitado trazer `duracao_horas` e custo da OS: eles vivem num grain onde a falha tem um modo só, e somá-los por modo aqui contaria a mesma parada duas vezes nas 24 leituras multimodo. Quem quiser hora parada por modo usa `fct_ordens_servico`, e isso está escrito na pergunta 3 do modelo dimensional. |
+| Como o unpivot é escrito | `union all` de cinco ramos, à mão | Rejeitada macro de unpivot: são cinco modos fixos, publicados pela fonte, e o `union all` explícito se lê de cima a baixo sem abrir outro arquivo. Macro se paga quando o número de colunas é grande ou variável, e aqui ele é cinco e não muda. |
+
+**A conferência que vale mais que a contagem de linhas.** As ocorrências por modo saíram
+assim:
+
+| Modo | `fct_falhas` | `docs/fonte-ai4i.md` |
+|---|---|---|
+| HDF | 115 | 115 |
+| OSF | 98 | 98 |
+| PWF | 95 | 95 |
+| TWF | 46 | 46 |
+| RNF | 19 | 19 |
+| INDETERMINADO | 9 | as 9 sem causa |
+
+O documento da fonte foi escrito na Semana 1, antes de existir qualquer modelo da gold.
+O fato reproduzir aqueles números agora é conferência contra um valor que já estava
+escrito, e não contra um número que o próprio modelo produziu.
+
+**A prova de que o teste `falha exige modo` pega o erro.** Trocando o `left join` por
+`join` na montagem dos modos, que é o engano natural de quem escreve o modelo:
+
+```
+2 of 17 FAIL 9 assert_falha_tem_modo ........................ [FAIL 9 in 0.17s]
+  Got 9 results, configured to fail if != 0
+```
+
+São exatamente as 9 leituras que a fonte declara como falha sem marcar modo nenhum. Com
+o inner join elas sumiriam do fato, o total cairia de 382 para 373, e nenhum erro
+apareceria: só um número menor que ninguém tem com o que comparar.
+
 ## Pendentes
 
 As cinco decisões que este bloco listava foram todas fechadas na seção da Semana 3
