@@ -30,6 +30,9 @@ the fleet as it stood on each change date, in ascending order, so the snapshot o
 real version each time. Skipping it leaves one version per machine and a past that never
 happened, so a test counts the versions and fails the build if the loop was skipped.
 
+That step runs `dbt snapshot` 32 times and takes around four minutes. Everything else in
+the block above finishes in seconds, so if it looks stuck, it is not.
+
 `uv run seed --sem-sujeira` loads the same data with the injected dirt turned off. The
 build then goes to zero warnings, which is how the tests prove they are measuring
 something.

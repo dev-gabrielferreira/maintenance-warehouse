@@ -31,6 +31,9 @@ abre uma versão de verdade a cada rodada. Pular o script deixa uma versão por 
 passado que nunca aconteceu, então um teste conta as versões e derruba o build se o laço
 não rodou.
 
+Esse passo roda o `dbt snapshot` 32 vezes e leva uns quatro minutos. Todo o resto do
+bloco acima termina em segundos, então se parecer travado, não está.
+
 `uv run seed --sem-sujeira` carrega o mesmo dado com a sujeira injetada desligada. O build
 vai a zero avisos, e é assim que os testes provam que estão medindo alguma coisa.
 

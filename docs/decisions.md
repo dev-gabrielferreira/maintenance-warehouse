@@ -617,16 +617,42 @@ pergunta 5 diz três e três, contando taxa. Nenhuma das duas frases está errad
 duas precisam dizer de que são feitas. Quando não dizem, uma contradiz a outra dentro do
 mesmo repositório e quem lê não tem como saber qual vale.
 
+### A verificação a partir de um banco vazio
+
+O critério de aceite do projeto é "clone, `docker compose up`, `uv run seed`,
+`dbt build`, tudo verde em qualquer máquina", e até aqui ele nunca tinha sido exercido
+com o volume derrubado: todo build da Semana 3 rodou sobre um banco que já existia.
+
+Feito de verdade, com `docker compose down -v` mais a remoção de `data/`,
+`warehouse/target/` e `warehouse/dbt_packages/`, que é o que um clone novo não tem. Isso
+exercita também o download no UCI e o `dbt deps`, que estavam sendo pulados por cache.
+
+| Passo | Resultado |
+|---|---|
+| download da fonte no UCI | baixado e conferido por SHA-256 |
+| `uv run seed` | 7 tabelas na bronze, 3,4 segundos |
+| `dbt deps` | dbt_utils 1.4.1, da versão fixa do `packages.yml` |
+| `scripts/historico_ativo.sh` | 32 cortes, 111 versões, 80 vigentes, 27 máquinas com passado |
+| `dbt build` | `PASS=229 WARN=11 ERROR=0 TOTAL=240` |
+| as cinco perguntas | as 37 linhas de resultado coladas batem com a saída, contra chaves geradas do zero |
+| `--sem-sujeira`, laço e build | `PASS=240 WARN=0 ERROR=0 TOTAL=240` |
+
+As nove contagens da tabela do README também foram conferidas contra o banco novo, e
+batem. Isso importa mais do que parece: a surrogate key é `row_number()` sobre uma ordem
+determinística, e este era o primeiro teste de que ela sai igual num banco reconstruído.
+Se a ordenação não fosse determinística, as respostas continuariam certas e os números
+colados nos comentários mudariam sozinhos.
+
+| Decisão | Escolha | Por quê, e o que foi rejeitado |
+|---|---|---|
+| Documentar quanto tempo o laço da SCD2 leva | Sim, nos dois READMEs | A verificação mediu 4m12s no laço, contra segundos em todo o resto. Quem clonar não tem como saber que aquilo é normal, e um passo que parece travado é um passo que alguém interrompe no meio, ficando com histórico pela metade e um build vermelho sem entender por quê. |
+
 ## Pendentes
 
-As cinco perguntas de negócio estão respondidas, e com elas cai o item que era o
-critério de aceite do projeto. O que sobra da Semana 4:
+As cinco perguntas de negócio estão respondidas, a falha real está narrada nos dois
+READMEs, a versão em português existe, e o critério de aceite foi exercido a partir de um
+banco vazio. Sobra um item, e ele sempre foi opcional:
 
 | Assunto | Situação | O que está em jogo |
 |---|---|---|
-| A falha real do projeto, documentada | Escolhida, falta escrever | Vai para o README como seção narrada: o **8,6 que não era igual a 8,6** como história principal, e o **erro de um a menos na SCD2** logo depois, curta. A primeira tem erro, correção errada no meio e causa; a segunda é o caso em que nada ficou vermelho e a única pista foi um número numa conferência que só existia porque alguém decidiu conferir. |
-| README em português | Falta | `README.pt-BR.md`, como o P1 faz. O `README.md` promete essa versão desde a Semana 3 e o link precisa passar a existir. |
-| Limites novos no README | Falta | Dois entram: o eixo de tempo que herda a ordem do arquivo da fonte, e a cadeia entre tipo de peça, criticidade e custo por setor, que faz três das cinco respostas medirem a mesma coisa por caminhos diferentes. |
-| A verificação a partir de um banco vazio | Falta | O critério de aceite diz "clone, `docker compose up`, `uv run seed`, `dbt build`, tudo verde em qualquer máquina", e ele nunca foi exercido com o volume derrubado. Enquanto não for, é promessa. |
-| Metabase lendo a gold | Opcional, por último | Continua sendo o corte previsto se a semana estourar. Nunca as perguntas. |
-
+| Metabase lendo a gold | Opcional, por último | Um serviço no `docker-compose.yml` falando com o Postgres pela rede interna, com três ou quatro cartões que são as próprias perguntas de negócio. É o corte previsto desde o `PLANO.md` se a semana estourar, e nunca foram as perguntas. Decisão que fica junto: se o print entra no repositório, já que o projeto rejeitou o print do `dbt docs` por envelhecer sem avisar, e o do Metabase tem o mesmo defeito. |

@@ -136,4 +136,4 @@ Checkpoint:
 - [x] Semana 1 · fundação
 - [x] Semana 2 · silver
 - [x] Semana 3 · gold + SCD2
-- [ ] Semana 4 · análise + lançamento
+- [x] Semana 4 · análise + lançamento (falta só o Metabase, que é opcional)
